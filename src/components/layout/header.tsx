@@ -3,13 +3,15 @@
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Bell, ChevronRight } from "lucide-react";
-import { NAV_ITEMS } from "@/lib/constants";
+import { flatNavItems } from "@/lib/constants";
 
 export function Header() {
   const pathname = usePathname();
   const { data: session } = useSession();
 
-  const currentNav = NAV_ITEMS.find(
+  const allNav = flatNavItems();
+
+  const currentNav = allNav.find(
     (item) =>
       pathname === item.href || pathname.startsWith(item.href + "/")
   );
@@ -18,7 +20,7 @@ export function Header() {
     .split("/")
     .filter(Boolean)
     .map((segment) => {
-      const nav = NAV_ITEMS.find((item) => item.href === `/${segment}`);
+      const nav = allNav.find((item) => item.href === `/${segment}`);
       return nav?.title || segment.charAt(0).toUpperCase() + segment.slice(1);
     });
 

@@ -247,3 +247,15 @@ model AuditLog {
   @@index([userId])
   @@map("audit_logs")
 }
+
+model ServiceAlias {
+  id            String  @id @default(cuid())
+  resourceGroup String  @unique @map("resource_group")
+  alias         String
+  color         String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("service_aliases")
+}

@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   DollarSign,
   Cloud,
+  Layers,
   Upload,
   GitCompareArrows,
   BarChart3,
@@ -14,23 +15,36 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   badge?: string;
+  children?: NavItem[];
 }
 
 export const NAV_ITEMS: NavItem[] = [
   {
-    title: "Dashboard",
+    title: "Dashboards",
     href: "/dashboard",
     icon: LayoutDashboard,
+    children: [
+      {
+        title: "Geral",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        title: "Azure",
+        href: "/azure",
+        icon: Cloud,
+      },
+      {
+        title: "Serviços",
+        href: "/servicos",
+        icon: Layers,
+      },
+    ],
   },
   {
     title: "Custos",
     href: "/custos",
     icon: DollarSign,
-  },
-  {
-    title: "Azure",
-    href: "/azure",
-    icon: Cloud,
   },
   {
     title: "Importação",
@@ -53,3 +67,17 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Settings,
   },
 ];
+
+/** Flatten all nav items (including children) for breadcrumb/header lookups */
+export function flatNavItems(): NavItem[] {
+  const items: NavItem[] = [];
+  for (const item of NAV_ITEMS) {
+    items.push(item);
+    if (item.children) {
+      for (const child of item.children) {
+        items.push(child);
+      }
+    }
+  }
+  return items;
+}

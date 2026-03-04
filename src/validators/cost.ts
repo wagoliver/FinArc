@@ -55,3 +55,11 @@ export const reconciliationSchema = z.object({
 });
 
 export type ReconciliationFormData = z.infer<typeof reconciliationSchema>;
+
+export const serviceAliasSchema = z.object({
+  resourceGroup: z.string().min(1, "Resource Group é obrigatório"),
+  alias: z.string().min(1, "Alias é obrigatório"),
+  color: z.string().optional(),
+});
+
+export type ServiceAliasFormData = z.infer<typeof serviceAliasSchema>;
