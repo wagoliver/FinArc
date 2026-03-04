@@ -95,7 +95,8 @@ export async function queryAzureCosts(
   token: string,
   subscriptionId: string,
   periodStart: Date,
-  periodEnd: Date
+  periodEnd: Date,
+  onPage?: (rows: AzureCostRow[]) => Promise<void>
 ): Promise<AzureCostRow[]> {
   const baseUrl = `https://management.azure.com/subscriptions/${subscriptionId}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`;
 
@@ -122,24 +123,39 @@ export async function queryAzureCosts(
 
   const allRows: AzureCostRow[] = [];
   let url: string | null = baseUrl;
+  const MAX_RETRIES = 3;
 
   while (url) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
+    let res: Response | null = null;
 
-    if (res.status === 429) {
-      const retryAfter = parseInt(res.headers.get("Retry-After") || "30", 10);
-      throw new AzureCostQueryError(
-        `Rate limit atingido. Tente novamente em ${retryAfter} segundos.`,
-        429
-      );
+    // Retry loop for rate limiting (429)
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (res.status === 429) {
+        if (attempt === MAX_RETRIES) {
+          throw new AzureCostQueryError(
+            "Rate limit atingido após múltiplas tentativas. Tente novamente mais tarde.",
+            429
+          );
+        }
+        const retryAfter = parseInt(res.headers.get("Retry-After") || "30", 10);
+        const waitMs = Math.max(retryAfter, 10) * 1000;
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      break; // Not a 429, proceed
     }
+
+    if (!res) break;
 
     if (res.status === 403) {
       throw new AzureCostQueryError(
@@ -179,11 +195,13 @@ export async function queryAzureCosts(
     const meterIdx = colMap.get("MeterCategory") ?? 5;
     const currIdx = colMap.get("Currency") ?? 6;
 
+    const pageRows: AzureCostRow[] = [];
+
     for (const row of props.rows as unknown as unknown[][]) {
       const cost = Number(row[costIdx]);
       if (cost <= 0) continue; // skip zero-cost rows
 
-      allRows.push({
+      pageRows.push({
         cost,
         date: Number(row[dateIdx]),
         serviceName: String(row[serviceIdx]),
@@ -194,8 +212,18 @@ export async function queryAzureCosts(
       });
     }
 
-    // Handle pagination
+    // Callback to persist this page immediately
+    if (onPage && pageRows.length > 0) {
+      await onPage(pageRows);
+    }
+
+    allRows.push(...pageRows);
+
+    // Handle pagination — delay between pages to avoid rate limit
     url = props.nextLink || null;
+    if (url) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
 
   return allRows;

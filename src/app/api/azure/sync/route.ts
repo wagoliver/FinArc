@@ -91,26 +91,9 @@ export async function POST(req: NextRequest) {
     });
 
     try {
-      // 1. Get OAuth token
-      const token = await getAzureToken(
-        config.tenantId,
-        config.clientId,
-        config.clientSecret
-      );
-
-      // 2. Query Cost Management API
-      const costRows = await queryAzureCosts(
-        token,
-        config.subscriptionId,
-        periodStart,
-        periodEnd
-      );
-
-      // 3. Load categories (slug → id)
+      // 1. Load categories (slug → id) — needed before querying
       const categories = await prisma.costCategory.findMany();
       const categoryMap = new Map(categories.map((c) => [c.slug, c.id]));
-
-      // Fallback category
       const fallbackCategoryId =
         categoryMap.get("outros") || categories[0]?.id;
 
@@ -119,7 +102,7 @@ export async function POST(req: NextRequest) {
           where: { id: syncLog.id },
           data: {
             status: "FAILED",
-            recordsFound: costRows.length,
+            recordsFound: 0,
             errors: "Nenhuma categoria encontrada. Crie pelo menos uma categoria.",
           },
         });
@@ -129,45 +112,14 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // 4. Build entries for batch insert with deduplication
-      const entries: {
-        description: string;
-        amount: number;
-        date: Date;
-        type: "VARIABLE";
-        source: "AZURE_SYNC";
-        categoryId: string;
-        userId: string;
-        azureResourceId: string;
-        azureResourceGroup: string;
-        azureServiceName: string;
-        azureMeterCategory: string;
-      }[] = [];
-
-      // Collect unique keys for dedup check
-      const dedupeKeys = costRows.map((row) => {
-        const dateStr = String(row.date);
-        const d = new Date(
-          parseInt(dateStr.slice(0, 4)),
-          parseInt(dateStr.slice(4, 6)) - 1,
-          parseInt(dateStr.slice(6, 8))
-        );
-        return { resourceId: row.resourceId, date: d };
+      // 2. Build dedup set from existing entries for this period
+      const existingEntries = await prisma.costEntry.findMany({
+        where: {
+          source: "AZURE_SYNC",
+          date: { gte: periodStart, lte: periodEnd },
+        },
+        select: { azureResourceId: true, date: true },
       });
-
-      // Batch check existing entries for dedup
-      const existingEntries = dedupeKeys.length > 0
-        ? await prisma.costEntry.findMany({
-            where: {
-              source: "AZURE_SYNC",
-              OR: dedupeKeys.map((k) => ({
-                azureResourceId: k.resourceId,
-                date: k.date,
-              })),
-            },
-            select: { azureResourceId: true, date: true },
-          })
-        : [];
 
       const existingSet = new Set(
         existingEntries.map(
@@ -176,48 +128,80 @@ export async function POST(req: NextRequest) {
         )
       );
 
-      for (const row of costRows) {
-        const dateStr = String(row.date);
-        const date = new Date(
-          parseInt(dateStr.slice(0, 4)),
-          parseInt(dateStr.slice(4, 6)) - 1,
-          parseInt(dateStr.slice(6, 8))
-        );
+      // 3. Get OAuth token
+      const token = await getAzureToken(
+        config.tenantId,
+        config.clientId,
+        config.clientSecret
+      );
 
-        const dedupeKey = `${row.resourceId}|${date.toISOString().split("T")[0]}`;
-        if (existingSet.has(dedupeKey)) continue;
-
-        // Map to category
-        const slug = mapServiceToCategory(row.serviceName);
-        const categoryId = categoryMap.get(slug) || fallbackCategoryId;
-
-        entries.push({
-          description: `Azure - ${row.serviceName}`,
-          amount: Math.round(row.cost * 100) / 100,
-          date,
-          type: "VARIABLE",
-          source: "AZURE_SYNC",
-          categoryId,
-          userId: session.user.id,
-          azureResourceId: row.resourceId,
-          azureResourceGroup: row.resourceGroup,
-          azureServiceName: row.serviceName,
-          azureMeterCategory: row.meterCategory,
-        });
-
-        // Add to set so we don't insert duplicates within the same batch
-        existingSet.add(dedupeKey);
-      }
-
-      // 5. Batch insert in chunks of 100
+      // 4. Query Azure and persist each page immediately via onPage callback
+      let recordsFound = 0;
       let recordsSynced = 0;
-      for (let i = 0; i < entries.length; i += 100) {
-        const batch = entries.slice(i, i + 100);
-        const result = await prisma.costEntry.createMany({ data: batch });
-        recordsSynced += result.count;
-      }
 
-      // 6. Update sync log
+      const costRows = await queryAzureCosts(
+        token,
+        config.subscriptionId,
+        periodStart,
+        periodEnd,
+        async (pageRows) => {
+          recordsFound += pageRows.length;
+
+          // Build entries for this page, deduplicating
+          const entries: {
+            description: string;
+            amount: number;
+            date: Date;
+            type: "VARIABLE";
+            source: "AZURE_SYNC";
+            categoryId: string;
+            userId: string;
+            azureResourceId: string;
+            azureResourceGroup: string;
+            azureServiceName: string;
+            azureMeterCategory: string;
+          }[] = [];
+
+          for (const row of pageRows) {
+            const dateStr = String(row.date);
+            const date = new Date(
+              parseInt(dateStr.slice(0, 4)),
+              parseInt(dateStr.slice(4, 6)) - 1,
+              parseInt(dateStr.slice(6, 8))
+            );
+
+            const dedupeKey = `${row.resourceId}|${date.toISOString().split("T")[0]}`;
+            if (existingSet.has(dedupeKey)) continue;
+
+            const slug = mapServiceToCategory(row.serviceName);
+            const categoryId = categoryMap.get(slug) || fallbackCategoryId;
+
+            entries.push({
+              description: `Azure - ${row.serviceName}`,
+              amount: Math.round(row.cost * 100) / 100,
+              date,
+              type: "VARIABLE",
+              source: "AZURE_SYNC",
+              categoryId,
+              userId: session.user.id,
+              azureResourceId: row.resourceId,
+              azureResourceGroup: row.resourceGroup,
+              azureServiceName: row.serviceName,
+              azureMeterCategory: row.meterCategory,
+            });
+
+            existingSet.add(dedupeKey);
+          }
+
+          // Persist this page immediately
+          if (entries.length > 0) {
+            const result = await prisma.costEntry.createMany({ data: entries });
+            recordsSynced += result.count;
+          }
+        }
+      );
+
+      // 5. Update sync log
       await prisma.azureSyncLog.update({
         where: { id: syncLog.id },
         data: {

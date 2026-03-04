@@ -242,9 +242,9 @@ export default function AzurePage() {
 
         totalSynced += data.data.recordsSynced;
 
-        // Small delay between months to avoid rate limit
+        // Delay between months to avoid rate limit (3s)
         if (i < pending.length - 1) {
-          await new Promise((r) => setTimeout(r, 2000));
+          await new Promise((r) => setTimeout(r, 3000));
         }
       }
 
