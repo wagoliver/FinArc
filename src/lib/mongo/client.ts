@@ -156,17 +156,36 @@ async function fetchWithDigest(
     },
   });
 
-  if (authRes.status === 401) {
+  if (authRes.status === 401 || authRes.status === 403) {
     // Drain body before throwing
     const errBody = await authRes.text();
+    const parsed = new URL(url);
     console.error("MongoDB Digest Auth failed:", {
-      url,
-      status: 401,
-      wwwAuth: sanitize(wwwAuth),
+      endpoint: parsed.pathname,
+      status: authRes.status,
       body: errBody.slice(0, 500),
     });
+
+    const detail = errBody
+      ? (() => {
+          try {
+            const j = JSON.parse(errBody);
+            return j.detail || j.error || j.message || "";
+          } catch {
+            return errBody.slice(0, 200);
+          }
+        })()
+      : "";
+
+    if (authRes.status === 403) {
+      throw new MongoAuthError(
+        `Sem permissão para ${parsed.pathname}. Verifique se a API Key tem a role necessária (ex: Organization Billing Viewer).${detail ? ` Detalhe: ${detail}` : ""}`,
+        403
+      );
+    }
+
     throw new MongoAuthError(
-      "Credenciais MongoDB Atlas inválidas. Verifique Public Key e Private Key.",
+      `Autenticação falhou para ${parsed.pathname} (HTTP 401).${detail ? ` Detalhe: ${detail}` : ""}`,
       401
     );
   }

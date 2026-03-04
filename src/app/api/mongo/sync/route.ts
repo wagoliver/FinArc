@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   listInvoices,
   getInvoice,
+  validateCredentials,
   MongoAuthError,
   MongoApiError,
 } from "@/lib/mongo/client";
@@ -52,6 +53,23 @@ export async function POST() {
     });
 
     try {
+      // 0. Validate credentials first (to isolate auth vs permission issues)
+      const validation = await validateCredentials(
+        config.orgId,
+        config.publicKey,
+        config.privateKey
+      );
+      if (!validation.valid) {
+        await prisma.mongoSyncLog.update({
+          where: { id: syncLog.id },
+          data: { status: "FAILED", errors: validation.error },
+        });
+        return NextResponse.json(
+          { success: false, error: validation.error },
+          { status: 401 }
+        );
+      }
+
       // 1. Load categories
       const categories = await prisma.costCategory.findMany();
       const categoryMap = new Map(categories.map((c) => [c.slug, c.id]));
