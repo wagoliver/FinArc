@@ -53,6 +53,7 @@ interface GrowthEntry {
 }
 
 interface AzureDashboardData {
+  referenceMonth: string;
   totalAzure: number;
   variationVsPrev: number;
   serviceCount: number;
@@ -356,11 +357,14 @@ export default function AzurePage() {
             <h1 className="text-lg font-bold text-text-primary">
               Azure Cost Management
             </h1>
-            {lastSyncAt && (
-              <p className="text-xs text-text-muted">
-                Última sync: {formatDateBR(lastSyncAt)}
-              </p>
-            )}
+            <p className="text-xs text-text-muted">
+              {dashboard?.referenceMonth
+                ? `Ref.: ${dashboard.referenceMonth}`
+                : ""}
+              {lastSyncAt
+                ? ` · Última sync: ${formatDateBR(lastSyncAt)}`
+                : ""}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">

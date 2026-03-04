@@ -16,13 +16,14 @@ export async function GET() {
   }
 
   try {
+    // Use only closed months: reference = last month, comparison = 2 months ago
     const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-    const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1); // used as upper bound to exclude open month
+    const referenceMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const referenceMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    const comparisonMonthStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const comparisonMonthEnd = new Date(now.getFullYear(), now.getMonth() - 1, 0, 23, 59, 59);
+    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 12, 1);
 
     // Run all independent queries in parallel
     const [
@@ -41,20 +42,20 @@ export async function GET() {
       allCurrentEntries,
       costStatsRaw,
     ] = await Promise.all([
-      // Total current month
+      // Total reference month (last closed month)
       prisma.costEntry.aggregate({
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
         },
         _sum: { amount: true },
       }),
 
-      // Total previous month
+      // Total comparison month (2 months ago)
       prisma.costEntry.aggregate({
         where: {
           source: "AZURE_SYNC",
-          date: { gte: prevMonthStart, lte: prevMonthEnd },
+          date: { gte: comparisonMonthStart, lte: comparisonMonthEnd },
         },
         _sum: { amount: true },
       }),
@@ -64,7 +65,7 @@ export async function GET() {
         by: ["azureServiceName"],
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
           azureServiceName: { not: null },
         },
         _sum: { amount: true },
@@ -78,7 +79,7 @@ export async function GET() {
         by: ["azureResourceGroup"],
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
           azureResourceGroup: { not: null },
         },
         _sum: { amount: true },
@@ -92,7 +93,7 @@ export async function GET() {
         by: ["azureMeterCategory"],
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
           azureMeterCategory: { not: null },
         },
         _sum: { amount: true },
@@ -101,12 +102,13 @@ export async function GET() {
         take: 10,
       }),
 
-      // Monthly trend (last 12 months)
+      // Monthly trend (last 12 closed months, excluding current open month)
       prisma.$queryRaw<{ month: Date; total: Prisma.Decimal }[]>`
         SELECT date_trunc('month', date) AS month, SUM(amount) AS total
         FROM cost_entries
         WHERE source = 'AZURE_SYNC'
           AND date >= ${twelveMonthsAgo}
+          AND date < ${currentMonthStart}
         GROUP BY date_trunc('month', date)
         ORDER BY month ASC
       `,
@@ -116,7 +118,7 @@ export async function GET() {
         by: ["azureServiceName"],
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
           azureServiceName: { not: null },
         },
       }),
@@ -126,7 +128,7 @@ export async function GET() {
         by: ["azureResourceGroup"],
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
           azureResourceGroup: { not: null },
         },
       }),
@@ -135,7 +137,7 @@ export async function GET() {
       prisma.costEntry.findMany({
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
         },
         orderBy: { amount: "desc" },
         take: 20,
@@ -156,22 +158,23 @@ export async function GET() {
         where: { source: "AZURE_SYNC" },
       }),
 
-      // Daily trend (last 30 days)
+      // Daily trend (reference closed month)
       prisma.$queryRaw<{ day: Date; total: Prisma.Decimal }[]>`
         SELECT date_trunc('day', date) AS day, SUM(amount) AS total
         FROM cost_entries
         WHERE source = 'AZURE_SYNC'
-          AND date >= ${thirtyDaysAgo}
+          AND date >= ${referenceMonthStart}
+          AND date <= ${referenceMonthEnd}
         GROUP BY date_trunc('day', date)
         ORDER BY day ASC
       `,
 
-      // Previous month by service (for growth comparison)
+      // Comparison month by service (for growth comparison)
       prisma.costEntry.groupBy({
         by: ["azureServiceName"],
         where: {
           source: "AZURE_SYNC",
-          date: { gte: prevMonthStart, lte: prevMonthEnd },
+          date: { gte: comparisonMonthStart, lte: comparisonMonthEnd },
           azureServiceName: { not: null },
         },
         _sum: { amount: true },
@@ -182,7 +185,7 @@ export async function GET() {
       prisma.costEntry.findMany({
         where: {
           source: "AZURE_SYNC",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
+          date: { gte: referenceMonthStart, lte: referenceMonthEnd },
         },
         select: { amount: true },
       }),
@@ -197,8 +200,8 @@ export async function GET() {
           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY amount) AS p95_val
         FROM cost_entries
         WHERE source = 'AZURE_SYNC'
-          AND date >= ${currentMonthStart}
-          AND date <= ${currentMonthEnd}
+          AND date >= ${referenceMonthStart}
+          AND date <= ${referenceMonthEnd}
       `,
     ]);
 
@@ -279,6 +282,7 @@ export async function GET() {
         FROM cost_entries
         WHERE source = 'AZURE_SYNC'
           AND date >= ${twelveMonthsAgo}
+          AND date < ${currentMonthStart}
           AND azure_service_name IS NOT NULL
         GROUP BY date_trunc('month', date), azure_service_name
         ORDER BY month ASC
@@ -388,6 +392,10 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
+        referenceMonth: referenceMonthStart.toLocaleDateString("pt-BR", {
+          month: "long",
+          year: "numeric",
+        }),
         totalAzure,
         variationVsPrev: Math.round(variationVsPrev * 10) / 10,
         serviceCount: distinctServices.length,
