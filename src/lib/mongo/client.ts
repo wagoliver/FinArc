@@ -59,8 +59,6 @@ function parseWwwAuthenticate(header: string): Record<string, string> {
   return params;
 }
 
-let nonceCount = 0;
-
 async function fetchWithDigest(
   url: string,
   publicKey: string,
@@ -96,9 +94,8 @@ async function fetchWithDigest(
     );
   }
 
-  // Step 2: compute Digest response
-  nonceCount++;
-  const nc = nonceCount.toString(16).padStart(8, "0");
+  // Step 2: compute Digest response (nc=1 per fresh nonce)
+  const nc = "00000001";
   const cnonce = md5(Date.now().toString() + Math.random().toString());
 
   const uri = new URL(url).pathname + new URL(url).search;
