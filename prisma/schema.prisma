@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+  VIEWER
+}
+
+enum CostType {
+  FIXED
+  VARIABLE
+  ONE_TIME
+}
+
+enum CostSource {
+  MANUAL
+  AZURE_SYNC
+  OFX_IMPORT
+  CSV_IMPORT
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum ImportFileType {
+  OFX
+  CSV
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ReconciliationStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum AlertType {
+  BUDGET_WARNING
+  BUDGET_EXCEEDED
+  SYNC_FAILED
+  IMPORT_COMPLETED
+  RECONCILIATION_MISMATCH
+  SYSTEM
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  costEntries    CostEntry[]
+  auditLogs      AuditLog[]
+  reconciliations Reconciliation[]
+
+  @@map("users")
+}
+
+model CostCategory {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+  color String
+  icon  String
+
+  costEntries CostEntry[]
+  budgets     Budget[]
+
+  @@map("cost_categories")
+}
+
+model CostEntry {
+  id          String     @id @default(cuid())
+  description String
+  amount      Decimal    @db.Decimal(15, 2)
+  date        DateTime
+  type        CostType   @default(VARIABLE)
+  source      CostSource @default(MANUAL)
+  notes       String?
+
+  // Azure fields
+  azureResourceId    String? @map("azure_resource_id")
+  azureResourceGroup String? @map("azure_resource_group")
+  azureServiceName   String? @map("azure_service_name")
+  azureMeterCategory String? @map("azure_meter_category")
+
+  // Bank fields
+  bankTransactionId String? @map("bank_transaction_id")
+  bankName          String? @map("bank_name")
+
+  // Reconciliation
+  reconciled     Boolean @default(false)
+  reconciledAt   DateTime? @map("reconciled_at")
+  reconciliationId String? @map("reconciliation_id")
+
+  categoryId String @map("category_id")
+  userId     String @map("user_id")
+
+  category       CostCategory    @relation(fields: [categoryId], references: [id])
+  user           User            @relation(fields: [userId], references: [id])
+  reconciliation Reconciliation? @relation(fields: [reconciliationId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@index([categoryId])
+  @@index([source])
+  @@index([reconciled])
+  @@map("cost_entries")
+}
+
+model AzureConfig {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  clientId       String   @map("client_id")
+  clientSecret   String   @map("client_secret")
+  subscriptionId String   @map("subscription_id")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  syncLogs AzureSyncLog[]
+
+  @@map("azure_configs")
+}
+
+model AzureSyncLog {
+  id            String     @id @default(cuid())
+  status        SyncStatus
+  periodStart   DateTime   @map("period_start")
+  periodEnd     DateTime   @map("period_end")
+  recordsFound  Int        @default(0) @map("records_found")
+  recordsSynced Int        @default(0) @map("records_synced")
+  errors        String?
+  configId      String     @map("config_id")
+
+  config AzureConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("azure_sync_logs")
+}
+
+model ImportLog {
+  id              String       @id @default(cuid())
+  fileName        String       @map("file_name")
+  fileType        ImportFileType @map("file_type")
+  status          ImportStatus @default(PENDING)
+  recordsTotal    Int          @default(0) @map("records_total")
+  recordsImported Int          @default(0) @map("records_imported")
+  recordsSkipped  Int          @default(0) @map("records_skipped")
+  errors          String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  @@map("import_logs")
+}
+
+model Reconciliation {
+  id              String               @id @default(cuid())
+  name            String
+  periodStart     DateTime             @map("period_start")
+  periodEnd       DateTime             @map("period_end")
+  status          ReconciliationStatus @default(DRAFT)
+  totalReconciled Decimal              @default(0) @db.Decimal(15, 2) @map("total_reconciled")
+  totalPending    Decimal              @default(0) @db.Decimal(15, 2) @map("total_pending")
+  notes           String?
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  entries CostEntry[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("reconciliations")
+}
+
+model Budget {
+  id       String       @id @default(cuid())
+  name     String
+  amount   Decimal      @db.Decimal(15, 2)
+  period   BudgetPeriod @default(MONTHLY)
+  alertAt  Int          @default(80)
+
+  categoryId String @map("category_id")
+  category   CostCategory @relation(fields: [categoryId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("budgets")
+}
+
+model Alert {
+  id      String    @id @default(cuid())
+  type    AlertType
+  title   String
+  message String
+  read    Boolean   @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([read])
+  @@map("alerts")
+}
+
+model AuditLog {
+  id       String @id @default(cuid())
+  action   String
+  entity   String
+  entityId String? @map("entity_id")
+  details  Json?
+  userId   String  @map("user_id")
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity])
+  @@index([userId])
+  @@map("audit_logs")
+}
