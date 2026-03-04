@@ -72,22 +72,23 @@ interface CategoryOption {
 }
 
 const TOOLTIP_STYLE = {
-  background: "oklch(0.17 0.02 260 / 0.9)",
-  border: "1px solid oklch(0.4 0.02 260 / 0.3)",
+  background: "#FFFFFF",
+  border: "1px solid #E2E8F0",
   borderRadius: "0.75rem",
-  color: "oklch(0.95 0.01 260)",
+  color: "#1E293B",
   fontSize: "0.8rem",
+  boxShadow: "0 4px 6px rgba(0,0,0,0.04)",
 };
 
 const PIE_COLORS = [
-  "oklch(0.65 0.25 290)",
-  "oklch(0.65 0.2 250)",
-  "oklch(0.7 0.15 160)",
-  "oklch(0.75 0.15 80)",
-  "oklch(0.65 0.25 25)",
-  "oklch(0.6 0.2 330)",
-  "oklch(0.7 0.2 200)",
-  "oklch(0.65 0.15 120)",
+  "#2563EB",
+  "#3B82F6",
+  "#0EA5E9",
+  "#D97706",
+  "#DC2626",
+  "#8B5CF6",
+  "#0891B2",
+  "#16A34A",
 ];
 
 export default function RelatoriosPage() {
@@ -152,7 +153,7 @@ export default function RelatoriosPage() {
   if (loading && !data) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-purple border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
       </div>
     );
   }
@@ -310,15 +311,15 @@ export default function RelatoriosPage() {
                 <BarChart data={d.byMonth}>
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke="oklch(0.3 0.02 260 / 0.3)"
+                    stroke="#E2E8F0"
                   />
                   <XAxis
                     dataKey="label"
-                    stroke="oklch(0.5 0.02 260)"
+                    stroke="#94A3B8"
                     fontSize={11}
                   />
                   <YAxis
-                    stroke="oklch(0.5 0.02 260)"
+                    stroke="#94A3B8"
                     fontSize={11}
                     tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
                   />
@@ -329,7 +330,7 @@ export default function RelatoriosPage() {
                   />
                   <Bar
                     dataKey="total"
-                    fill="oklch(0.65 0.2 250)"
+                    fill="#2563EB"
                     radius={[6, 6, 0, 0]}
                   />
                 </BarChart>

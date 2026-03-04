@@ -4,25 +4,34 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { LogOut } from "lucide-react";
+import { LogOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { useSidebar } from "./sidebar-context";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { collapsed, toggle } = useSidebar();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-border-glass bg-surface-1/60 backdrop-blur-xl">
+    <aside
+      className={cn(
+        "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-slate-700 bg-[#1E293B] transition-all duration-200",
+        collapsed ? "w-16" : "w-64"
+      )}
+    >
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-purple to-accent-blue">
+      <div className={cn("flex h-16 items-center gap-3", collapsed ? "justify-center px-2" : "px-6")}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600">
           <span className="text-base font-bold text-white">F</span>
         </div>
-        <div>
-          <span className="text-lg font-bold text-text-primary">FinArc</span>
-          <p className="text-[10px] leading-none text-text-muted">
-            FinOps & Cost Management
-          </p>
-        </div>
+        {!collapsed && (
+          <div>
+            <span className="text-lg font-bold text-white">FinArc</span>
+            <p className="text-[10px] leading-none text-slate-400">
+              FinOps & Cost Management
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -35,26 +44,53 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.title : undefined}
               className={cn(
                 "sidebar-link",
-                isActive && "sidebar-link-active"
+                isActive && "sidebar-link-active",
+                collapsed && "sidebar-link-collapsed"
               )}
             >
               <item.icon className="h-4.5 w-4.5 shrink-0" />
-              <span>{item.title}</span>
+              {!collapsed && <span>{item.title}</span>}
             </Link>
           );
         })}
       </nav>
 
+      {/* Toggle button */}
+      <div className="px-3 pb-1">
+        <button
+          onClick={toggle}
+          title={collapsed ? "Expandir" : "Colapsar"}
+          className={cn(
+            "sidebar-link w-full",
+            collapsed && "sidebar-link-collapsed"
+          )}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4.5 w-4.5 shrink-0" />
+          ) : (
+            <>
+              <ChevronLeft className="h-4.5 w-4.5 shrink-0" />
+              <span>Colapsar</span>
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Logout */}
-      <div className="border-t border-border-glass p-3">
+      <div className="border-t border-slate-700 p-3">
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="sidebar-link w-full text-danger/80 hover:text-danger hover:bg-danger/10"
+          title={collapsed ? "Sair" : undefined}
+          className={cn(
+            "sidebar-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10",
+            collapsed && "sidebar-link-collapsed"
+          )}
         >
           <LogOut className="h-4.5 w-4.5 shrink-0" />
-          <span>Sair</span>
+          {!collapsed && <span>Sair</span>}
         </button>
       </div>
     </aside>

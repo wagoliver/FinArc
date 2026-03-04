@@ -23,11 +23,11 @@ export function Header() {
     });
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border-glass bg-surface-0/80 px-6 backdrop-blur-xl">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur-sm">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2">
         {currentNav && (
-          <currentNav.icon className="h-5 w-5 text-accent-purple" />
+          <currentNav.icon className="h-5 w-5 text-blue-600" />
         )}
         <div className="flex items-center gap-1 text-sm">
           {breadcrumbs.map((crumb, i) => (
@@ -52,13 +52,13 @@ export function Header() {
       {/* Right side */}
       <div className="flex items-center gap-4">
         {/* Notifications */}
-        <button className="relative rounded-xl p-2 text-text-secondary hover:bg-surface-2/50 hover:text-text-primary">
+        <button className="relative rounded-xl p-2 text-text-secondary hover:bg-slate-100 hover:text-text-primary">
           <Bell className="h-5 w-5" />
         </button>
 
         {/* User */}
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-accent-purple to-accent-blue text-xs font-bold text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
             {session?.user?.name
               ?.split(" ")
               .map((n) => n[0])

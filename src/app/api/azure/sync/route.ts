@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,9 +10,25 @@ import {
 import { mapServiceToCategory } from "@/lib/azure/category-mapper";
 
 // ---------------------------------------------------------------------------
-// POST – Trigger Azure sync (real Cost Management API)
+// Helper: parse "2023-01" → { start, end } date range
 // ---------------------------------------------------------------------------
-export async function POST() {
+function parseMonth(monthKey: string): { start: Date; end: Date } | null {
+  const match = monthKey.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = parseInt(match[1]);
+  const month = parseInt(match[2]) - 1; // 0-indexed
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0, 23, 59, 59);
+  return { start, end };
+}
+
+// ---------------------------------------------------------------------------
+// POST – Trigger Azure sync
+// Body: { month?: "2023-01" }
+//   - If month is provided, syncs only that month
+//   - If not provided, syncs all last 12 months (legacy behavior)
+// ---------------------------------------------------------------------------
+export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) {
     return NextResponse.json(
@@ -37,10 +53,33 @@ export async function POST() {
       );
     }
 
-    // Period: last 12 months
-    const now = new Date();
-    const periodStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    // Parse optional month from body
+    let body: { month?: string } = {};
+    try {
+      body = await req.json();
+    } catch {
+      // No body = legacy full sync
+    }
+
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    if (body.month) {
+      const parsed = parseMonth(body.month);
+      if (!parsed) {
+        return NextResponse.json(
+          { success: false, error: "Formato de mês inválido. Use YYYY-MM." },
+          { status: 400 }
+        );
+      }
+      periodStart = parsed.start;
+      periodEnd = parsed.end;
+    } else {
+      // Legacy: last 12 months
+      const now = new Date();
+      periodStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
 
     const syncLog = await prisma.azureSyncLog.create({
       data: {
@@ -117,16 +156,18 @@ export async function POST() {
       });
 
       // Batch check existing entries for dedup
-      const existingEntries = await prisma.costEntry.findMany({
-        where: {
-          source: "AZURE_SYNC",
-          OR: dedupeKeys.map((k) => ({
-            azureResourceId: k.resourceId,
-            date: k.date,
-          })),
-        },
-        select: { azureResourceId: true, date: true },
-      });
+      const existingEntries = dedupeKeys.length > 0
+        ? await prisma.costEntry.findMany({
+            where: {
+              source: "AZURE_SYNC",
+              OR: dedupeKeys.map((k) => ({
+                azureResourceId: k.resourceId,
+                date: k.date,
+              })),
+            },
+            select: { azureResourceId: true, date: true },
+          })
+        : [];
 
       const existingSet = new Set(
         existingEntries.map(
@@ -186,6 +227,7 @@ export async function POST() {
         },
       });
 
+      const now = new Date();
       await prisma.azureConfig.update({
         where: { id: config.id },
         data: { lastSyncAt: now },
@@ -200,6 +242,7 @@ export async function POST() {
           recordsSynced,
           periodStart,
           periodEnd,
+          month: body.month || null,
         },
       });
     } catch (syncError) {

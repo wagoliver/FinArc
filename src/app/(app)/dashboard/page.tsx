@@ -57,7 +57,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-purple border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
       </div>
     );
   }
@@ -151,27 +151,27 @@ export default function DashboardPage() {
                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
                     <stop
                       offset="0%"
-                      stopColor="oklch(0.65 0.25 290)"
-                      stopOpacity={0.3}
+                      stopColor="#2563EB"
+                      stopOpacity={0.2}
                     />
                     <stop
                       offset="100%"
-                      stopColor="oklch(0.65 0.25 290)"
+                      stopColor="#2563EB"
                       stopOpacity={0}
                     />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="oklch(0.3 0.02 260 / 0.3)"
+                  stroke="#E2E8F0"
                 />
                 <XAxis
                   dataKey="month"
-                  stroke="oklch(0.5 0.02 260)"
+                  stroke="#94A3B8"
                   fontSize={11}
                 />
                 <YAxis
-                  stroke="oklch(0.5 0.02 260)"
+                  stroke="#94A3B8"
                   fontSize={11}
                   tickFormatter={(v) =>
                     `R$${(v / 1000).toFixed(0)}k`
@@ -179,10 +179,10 @@ export default function DashboardPage() {
                 />
                 <Tooltip
                   contentStyle={{
-                    background: "oklch(0.17 0.02 260 / 0.9)",
-                    border: "1px solid oklch(0.4 0.02 260 / 0.3)",
+                    background: "#FFFFFF",
+                    border: "1px solid #E2E8F0",
                     borderRadius: "0.75rem",
-                    color: "oklch(0.95 0.01 260)",
+                    color: "#1E293B",
                     fontSize: "0.8rem",
                   }}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -191,7 +191,7 @@ export default function DashboardPage() {
                 <Area
                   type="monotone"
                   dataKey="total"
-                  stroke="oklch(0.65 0.25 290)"
+                  stroke="#2563EB"
                   fill="url(#colorTotal)"
                   strokeWidth={2}
                 />
@@ -225,10 +225,10 @@ export default function DashboardPage() {
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      background: "oklch(0.17 0.02 260 / 0.9)",
-                      border: "1px solid oklch(0.4 0.02 260 / 0.3)",
+                      background: "#FFFFFF",
+                      border: "1px solid #E2E8F0",
                       borderRadius: "0.75rem",
-                      color: "oklch(0.95 0.01 260)",
+                      color: "#1E293B",
                       fontSize: "0.8rem",
                     }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -356,15 +356,15 @@ export default function DashboardPage() {
               <BarChart data={d.monthlyCosts}>
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="oklch(0.3 0.02 260 / 0.3)"
+                  stroke="#E2E8F0"
                 />
                 <XAxis
                   dataKey="month"
-                  stroke="oklch(0.5 0.02 260)"
+                  stroke="#94A3B8"
                   fontSize={11}
                 />
                 <YAxis
-                  stroke="oklch(0.5 0.02 260)"
+                  stroke="#94A3B8"
                   fontSize={11}
                   tickFormatter={(v) =>
                     `R$${(v / 1000).toFixed(0)}k`
@@ -372,10 +372,10 @@ export default function DashboardPage() {
                 />
                 <Tooltip
                   contentStyle={{
-                    background: "oklch(0.17 0.02 260 / 0.9)",
-                    border: "1px solid oklch(0.4 0.02 260 / 0.3)",
+                    background: "#FFFFFF",
+                    border: "1px solid #E2E8F0",
                     borderRadius: "0.75rem",
-                    color: "oklch(0.95 0.01 260)",
+                    color: "#1E293B",
                     fontSize: "0.8rem",
                   }}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -383,7 +383,7 @@ export default function DashboardPage() {
                 />
                 <Bar
                   dataKey="total"
-                  fill="oklch(0.65 0.2 250)"
+                  fill="#2563EB"
                   radius={[6, 6, 0, 0]}
                 />
               </BarChart>
@@ -438,10 +438,10 @@ export default function DashboardPage() {
                         width: `${Math.min(budget.percentage, 100)}%`,
                         backgroundColor:
                           budget.percentage > 90
-                            ? "oklch(0.65 0.25 25)"
+                            ? "#DC2626"
                             : budget.percentage > 70
-                            ? "oklch(0.75 0.15 80)"
-                            : "oklch(0.65 0.25 290)",
+                            ? "#D97706"
+                            : "#2563EB",
                       }}
                     />
                   </div>
