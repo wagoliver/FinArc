@@ -146,7 +146,39 @@ export async function POST() {
           config.privateKey
         );
 
-        const lineItems = fullInvoice.lineItems || [];
+        // Log full invoice structure to find the correct field names
+        if (relevantInvoices.indexOf(invoice) === 0) {
+          console.log(
+            "MongoDB invoice structure (first):",
+            JSON.stringify({
+              id: fullInvoice.id,
+              keys: Object.keys(fullInvoice),
+              lineItemsCount: fullInvoice.lineItems?.length ?? "undefined",
+              subtotalCents: fullInvoice.subtotalCents,
+              amountBilledCents: fullInvoice.amountBilledCents,
+              sampleLineItem: fullInvoice.lineItems?.[0]
+                ? JSON.stringify(fullInvoice.lineItems[0])
+                : "none",
+              // Check alternative field names
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              altFields: {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                line_items: (fullInvoice as any).line_items?.length,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                items: (fullInvoice as any).items?.length,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                charges: (fullInvoice as any).charges?.length,
+              },
+            }, null, 2)
+          );
+        }
+
+        const lineItems = fullInvoice.lineItems
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          || (fullInvoice as any).line_items
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          || (fullInvoice as any).items
+          || [];
         recordsFound += lineItems.length;
 
         const entries: {
