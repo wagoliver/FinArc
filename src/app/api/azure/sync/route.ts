@@ -37,9 +37,9 @@ export async function POST() {
       );
     }
 
-    // Period: current month
+    // Period: last 12 months
     const now = new Date();
-    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const periodStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
     const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
     const syncLog = await prisma.azureSyncLog.create({

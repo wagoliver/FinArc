@@ -13,12 +13,31 @@ import {
   X,
   AlertCircle,
   Shield,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Server,
+  Layers,
 } from "lucide-react";
 import {
   azureConfigSchema,
   type AzureConfigFormData,
 } from "@/validators/cost";
-import { formatDateBR } from "@/lib/formatters";
+import { formatBRL, formatDateBR } from "@/lib/formatters";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+} from "recharts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,6 +75,46 @@ interface SyncLogEntry {
   };
 }
 
+interface AzureDashboardData {
+  totalAzure: number;
+  variationVsPrev: number;
+  serviceCount: number;
+  resourceGroupCount: number;
+  byService: { name: string; total: number; count: number }[];
+  byResourceGroup: { name: string; total: number; count: number }[];
+  byMeterCategory: { name: string; total: number; count: number }[];
+  monthlyTrend: { month: string; total: number }[];
+  topResources: {
+    id: string;
+    description: string;
+    amount: number;
+    date: string;
+    serviceName: string | null;
+    resourceGroup: string | null;
+  }[];
+}
+
+const OKLCH_COLORS = [
+  "oklch(0.65 0.25 290)",
+  "oklch(0.65 0.2 250)",
+  "oklch(0.7 0.2 195)",
+  "oklch(0.65 0.25 330)",
+  "oklch(0.75 0.15 80)",
+  "oklch(0.65 0.25 25)",
+  "oklch(0.7 0.2 145)",
+  "oklch(0.6 0.2 310)",
+  "oklch(0.7 0.15 220)",
+  "oklch(0.65 0.2 60)",
+];
+
+const tooltipStyle = {
+  background: "oklch(0.17 0.02 260 / 0.9)",
+  border: "1px solid oklch(0.4 0.02 260 / 0.3)",
+  borderRadius: "0.75rem",
+  color: "oklch(0.95 0.01 260)",
+  fontSize: "0.8rem",
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -63,6 +122,7 @@ export default function AzurePage() {
   const [config, setConfig] = useState<AzureConfigData | null>(null);
   const [validation, setValidation] = useState<AzureValidation | null>(null);
   const [syncHistory, setSyncHistory] = useState<SyncLogEntry[]>([]);
+  const [dashboard, setDashboard] = useState<AzureDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -110,11 +170,21 @@ export default function AzurePage() {
     }
   }, []);
 
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const res = await fetch("/api/azure/dashboard");
+      const data = await res.json();
+      if (data.success) setDashboard(data.data);
+    } catch {
+      // silent
+    }
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchConfig(), fetchSyncHistory()]).finally(() =>
-      setLoading(false)
+    Promise.all([fetchConfig(), fetchSyncHistory(), fetchDashboard()]).finally(
+      () => setLoading(false)
     );
-  }, [fetchConfig, fetchSyncHistory]);
+  }, [fetchConfig, fetchSyncHistory, fetchDashboard]);
 
   // -------------------------------------------------------------------------
   // Save config
@@ -182,6 +252,7 @@ export default function AzurePage() {
       );
       fetchSyncHistory();
       fetchConfig();
+      fetchDashboard();
     } catch {
       setError("Erro ao sincronizar com Azure");
     } finally {
@@ -489,7 +560,7 @@ export default function AzurePage() {
                 <p className="text-sm font-medium text-text-primary">
                   {new Date(
                     new Date().getFullYear(),
-                    new Date().getMonth(),
+                    new Date().getMonth() - 11,
                     1
                   ).toLocaleDateString("pt-BR")}{" "}
                   -{" "}
@@ -608,6 +679,359 @@ export default function AzurePage() {
           </div>
         )}
       </GlassCard>
+
+      {/* ================================================================= */}
+      {/* Azure Dashboard – Visualizações de Custos                         */}
+      {/* ================================================================= */}
+      {dashboard && (dashboard.totalAzure > 0 || dashboard.monthlyTrend.length > 0) && (
+        <>
+          <div className="border-t border-border-glass pt-6">
+            <h2 className="text-xl font-bold text-text-primary">
+              Dashboard de Custos Azure
+            </h2>
+            <p className="text-sm text-text-secondary">
+              Análise detalhada dos custos importados do Azure
+            </p>
+          </div>
+
+          {/* KPI Cards */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            {/* Total Azure */}
+            <GlassCard className="flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-secondary">
+                  Total Azure
+                </span>
+                <div className="rounded-lg bg-accent-blue/15 p-2">
+                  <DollarSign className="h-4 w-4 text-accent-blue" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-2xl font-bold text-text-primary">
+                  {formatBRL(dashboard.totalAzure)}
+                </p>
+                <div className="mt-1 flex items-center gap-1">
+                  {dashboard.variationVsPrev !== 0 ? (
+                    <>
+                      {dashboard.variationVsPrev > 0 ? (
+                        <TrendingUp className="h-3 w-3 text-danger" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3 text-success" />
+                      )}
+                      <span
+                        className={`text-xs font-medium ${
+                          dashboard.variationVsPrev > 0
+                            ? "text-danger"
+                            : "text-success"
+                        }`}
+                      >
+                        {dashboard.variationVsPrev > 0 ? "+" : ""}
+                        {dashboard.variationVsPrev.toFixed(1)}%
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        vs. mês anterior
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-text-muted">Mês atual</span>
+                  )}
+                </div>
+              </div>
+            </GlassCard>
+
+            {/* Service count */}
+            <GlassCard className="flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-secondary">
+                  Serviços Azure
+                </span>
+                <div className="rounded-lg bg-accent-purple/15 p-2">
+                  <Server className="h-4 w-4 text-accent-purple" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-2xl font-bold text-text-primary">
+                  {dashboard.serviceCount}
+                </p>
+                <p className="mt-1 text-xs text-text-muted">
+                  Serviços distintos
+                </p>
+              </div>
+            </GlassCard>
+
+            {/* Resource Group count */}
+            <GlassCard className="flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-secondary">
+                  Resource Groups
+                </span>
+                <div className="rounded-lg bg-accent-cyan/15 p-2">
+                  <Layers className="h-4 w-4 text-accent-cyan" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-2xl font-bold text-text-primary">
+                  {dashboard.resourceGroupCount}
+                </p>
+                <p className="mt-1 text-xs text-text-muted">
+                  Grupos de recursos
+                </p>
+              </div>
+            </GlassCard>
+          </div>
+
+          {/* Charts Row */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Top Services – Horizontal BarChart */}
+            {dashboard.byService.length > 0 && (
+              <GlassCard className="flex flex-col">
+                <span className="mb-4 text-sm font-medium text-text-secondary">
+                  Top Serviços por Custo
+                </span>
+                <div className="h-[320px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={dashboard.byService}
+                      layout="vertical"
+                      margin={{ left: 10, right: 20, top: 5, bottom: 5 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="oklch(0.3 0.02 260 / 0.3)"
+                        horizontal={false}
+                      />
+                      <XAxis
+                        type="number"
+                        stroke="oklch(0.5 0.02 260)"
+                        fontSize={11}
+                        tickFormatter={(v) =>
+                          v >= 1000
+                            ? `R$${(v / 1000).toFixed(0)}k`
+                            : `R$${v}`
+                        }
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        stroke="oklch(0.5 0.02 260)"
+                        fontSize={10}
+                        width={120}
+                        tickFormatter={(v: string) =>
+                          v.length > 18 ? v.slice(0, 18) + "…" : v
+                        }
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        formatter={(value: any) => [
+                          formatBRL(Number(value)),
+                          "Custo",
+                        ]}
+                      />
+                      <Bar
+                        dataKey="total"
+                        fill="oklch(0.65 0.2 250)"
+                        radius={[0, 6, 6, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </GlassCard>
+            )}
+
+            {/* Monthly Trend – AreaChart */}
+            {dashboard.monthlyTrend.length > 0 && (
+              <GlassCard className="flex flex-col">
+                <span className="mb-4 text-sm font-medium text-text-secondary">
+                  Evolução Mensal
+                </span>
+                <div className="h-[320px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={dashboard.monthlyTrend}>
+                      <defs>
+                        <linearGradient
+                          id="azureGradient"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="oklch(0.65 0.2 250)"
+                            stopOpacity={0.3}
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="oklch(0.65 0.2 250)"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="oklch(0.3 0.02 260 / 0.3)"
+                      />
+                      <XAxis
+                        dataKey="month"
+                        stroke="oklch(0.5 0.02 260)"
+                        fontSize={11}
+                      />
+                      <YAxis
+                        stroke="oklch(0.5 0.02 260)"
+                        fontSize={11}
+                        tickFormatter={(v) =>
+                          v >= 1000
+                            ? `R$${(v / 1000).toFixed(0)}k`
+                            : `R$${v}`
+                        }
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        formatter={(value: any) => [
+                          formatBRL(Number(value)),
+                          "Total",
+                        ]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="total"
+                        stroke="oklch(0.65 0.2 250)"
+                        fill="url(#azureGradient)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </GlassCard>
+            )}
+          </div>
+
+          {/* Second Row: PieChart + Table */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Resource Group Distribution – PieChart */}
+            {dashboard.byResourceGroup.length > 0 && (
+              <GlassCard className="flex flex-col">
+                <span className="mb-4 text-sm font-medium text-text-secondary">
+                  Distribuição por Resource Group
+                </span>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={dashboard.byResourceGroup}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        dataKey="total"
+                        nameKey="name"
+                        strokeWidth={0}
+                      >
+                        {dashboard.byResourceGroup.map((_, i) => (
+                          <Cell
+                            key={i}
+                            fill={OKLCH_COLORS[i % OKLCH_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        formatter={(value: any) => [
+                          formatBRL(Number(value)),
+                          "",
+                        ]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  {dashboard.byResourceGroup.slice(0, 5).map((rg, i) => (
+                    <div
+                      key={rg.name}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{
+                            backgroundColor:
+                              OKLCH_COLORS[i % OKLCH_COLORS.length],
+                          }}
+                        />
+                        <span className="truncate text-text-secondary">
+                          {rg.name}
+                        </span>
+                      </div>
+                      <span className="font-medium text-text-primary">
+                        {formatBRL(rg.total)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+            )}
+
+            {/* Top Resources Table */}
+            {dashboard.topResources.length > 0 && (
+              <GlassCard className="flex flex-col">
+                <span className="mb-4 text-sm font-medium text-text-secondary">
+                  Top Recursos Mais Caros
+                </span>
+                <div className="overflow-auto rounded-xl border border-border-glass">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border-glass bg-surface-1/50">
+                        <th className="px-3 py-2 text-left font-medium text-text-secondary">
+                          Serviço
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium text-text-secondary">
+                          Resource Group
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium text-text-secondary">
+                          Valor
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium text-text-secondary">
+                          Data
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboard.topResources.map((r) => (
+                        <tr
+                          key={r.id}
+                          className="border-b border-border-glass/50 last:border-0"
+                        >
+                          <td
+                            className="max-w-36 truncate px-3 py-2 text-text-primary"
+                            title={r.serviceName ?? r.description}
+                          >
+                            {r.serviceName ?? r.description}
+                          </td>
+                          <td
+                            className="max-w-32 truncate px-3 py-2 text-text-muted"
+                            title={r.resourceGroup ?? "-"}
+                          >
+                            {r.resourceGroup ?? "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-text-primary">
+                            {formatBRL(r.amount)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right text-text-muted">
+                            {formatDateBR(r.date)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </GlassCard>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
