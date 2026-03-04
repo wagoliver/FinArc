@@ -31,49 +31,69 @@ export class MongoApiError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// HTTP Digest Auth
+// HTTP Digest Auth helpers
 // ---------------------------------------------------------------------------
 function md5(input: string): string {
   return createHash("md5").update(input, "utf8").digest("hex");
 }
 
 /** Strip any non-ASCII characters that break HTTP header ByteString rules */
-function sanitizeHeaderValue(value: string): string {
+function sanitize(value: string): string {
   // eslint-disable-next-line no-control-regex
   return value.replace(/[^\x00-\xFF]/g, "");
 }
 
+/**
+ * Parse WWW-Authenticate header. Handles both quoted and unquoted values,
+ * including empty values like `domain=""`.
+ */
 function parseWwwAuthenticate(header: string): Record<string, string> {
   const params: Record<string, string> = {};
-  const safe = sanitizeHeaderValue(header);
-  const regex = /(\w+)="([^"]+)"/g;
+  const safe = sanitize(header);
+
+  // Match quoted values (including empty): key="value" or key=""
+  const quotedRegex = /(\w+)="([^"]*)"/g;
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(safe)) !== null) {
+  while ((match = quotedRegex.exec(safe)) !== null) {
     params[match[1]] = match[2];
   }
-  // qop may not be quoted
-  const qopMatch = safe.match(/qop=(\w+)/);
-  if (qopMatch && !params.qop) {
-    params.qop = qopMatch[1];
+
+  // Match unquoted values: key=value (for algorithm=MD5, stale=false, etc.)
+  const unquotedRegex = /(\w+)=([^",\s]+)/g;
+  while ((match = unquotedRegex.exec(safe)) !== null) {
+    if (!params[match[1]]) {
+      params[match[1]] = match[2];
+    }
   }
+
   return params;
 }
 
+// ---------------------------------------------------------------------------
+// fetchWithDigest — two-step HTTP Digest Auth
+// ---------------------------------------------------------------------------
 async function fetchWithDigest(
   url: string,
   publicKey: string,
   privateKey: string,
   method = "GET"
 ): Promise<Response> {
-  // Step 1: initial request to get WWW-Authenticate challenge
+  // Step 1: unauthenticated request → expect 401 with WWW-Authenticate
   const initialRes = await fetch(url, {
     method,
     headers: { Accept: ACCEPT_HEADER },
   });
 
+  // IMPORTANT: always drain the response body to release the connection
+  const initialBody = await initialRes.text();
+
   if (initialRes.status !== 401) {
-    // If no challenge, return directly (unlikely for Atlas)
-    return initialRes;
+    // Unexpected — return a synthetic-like response with the body we already consumed
+    return new Response(initialBody, {
+      status: initialRes.status,
+      statusText: initialRes.statusText,
+      headers: initialRes.headers,
+    });
   }
 
   const wwwAuth = initialRes.headers.get("www-authenticate");
@@ -85,20 +105,21 @@ async function fetchWithDigest(
   }
 
   const params = parseWwwAuthenticate(wwwAuth);
-  const { realm, nonce, qop } = params;
+  const { realm, nonce, qop, opaque } = params;
 
   if (!realm || !nonce) {
     throw new MongoAuthError(
-      "Challenge Digest incompleto (realm/nonce ausente).",
+      `Challenge Digest incompleto. realm=${realm}, nonce=${nonce ? "present" : "missing"}`,
       401
     );
   }
 
-  // Step 2: compute Digest response (nc=1 per fresh nonce)
+  // Step 2: compute Digest response
   const nc = "00000001";
   const cnonce = md5(Date.now().toString() + Math.random().toString());
+  const parsed = new URL(url);
+  const uri = parsed.pathname + parsed.search;
 
-  const uri = new URL(url).pathname + new URL(url).search;
   const ha1 = md5(`${publicKey}:${realm}:${privateKey}`);
   const ha2 = md5(`${method}:${uri}`);
 
@@ -109,6 +130,7 @@ async function fetchWithDigest(
     response = md5(`${ha1}:${nonce}:${ha2}`);
   }
 
+  // Build Authorization header
   const authParts = [
     `username="${publicKey}"`,
     `realm="${realm}"`,
@@ -120,9 +142,12 @@ async function fetchWithDigest(
   if (qop) {
     authParts.push(`qop=${qop}`, `nc=${nc}`, `cnonce="${cnonce}"`);
   }
+  if (opaque) {
+    authParts.push(`opaque="${opaque}"`);
+  }
 
   // Step 3: authenticated request
-  const authHeader = sanitizeHeaderValue(`Digest ${authParts.join(", ")}`);
+  const authHeader = sanitize(`Digest ${authParts.join(", ")}`);
   const authRes = await fetch(url, {
     method,
     headers: {
@@ -132,6 +157,14 @@ async function fetchWithDigest(
   });
 
   if (authRes.status === 401) {
+    // Drain body before throwing
+    const errBody = await authRes.text();
+    console.error("MongoDB Digest Auth failed:", {
+      url,
+      status: 401,
+      wwwAuth: sanitize(wwwAuth),
+      body: errBody.slice(0, 500),
+    });
     throw new MongoAuthError(
       "Credenciais MongoDB Atlas inválidas. Verifique Public Key e Private Key.",
       401
@@ -237,6 +270,9 @@ export async function validateCredentials(
   try {
     const url = `${BASE_URL}/api/atlas/v2/orgs/${orgId}`;
     const res = await fetchWithDigest(url, publicKey, privateKey);
+
+    // Drain body
+    await res.text();
 
     if (res.status === 403) {
       return {
