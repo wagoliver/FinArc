@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GlassCard } from "@/components/glass/glass-card";
 import {
-  Layers,
+  Server,
   DollarSign,
   TrendingUp,
   TrendingDown,
@@ -11,9 +11,6 @@ import {
   ArrowDownRight,
   Award,
   Hash,
-  Pencil,
-  Check,
-  X,
   Loader2,
   ChevronUp,
   ChevronDown,
@@ -36,10 +33,8 @@ import {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-interface ServiceEntry {
-  resourceGroup: string;
-  displayName: string;
-  color: string | null;
+interface ResourceEntry {
+  serviceName: string;
   cost: number;
   prevCost: number;
   variation: number;
@@ -47,13 +42,13 @@ interface ServiceEntry {
   resources: number;
 }
 
-interface ServicesDashboardData {
+interface ResourcesDashboardData {
   referenceMonth: string;
   totalCost: number;
   serviceCount: number;
   topService: { name: string; cost: number } | null;
   variationVsPrev: number;
-  services: ServiceEntry[];
+  services: ResourceEntry[];
   monthlyTrend: Record<string, string | number>[];
   monthlyTrendKeys: string[];
 }
@@ -89,24 +84,21 @@ const gridStroke = "#E2E8F0";
 // ---------------------------------------------------------------------------
 // Sort
 // ---------------------------------------------------------------------------
-type SortField = "displayName" | "cost" | "prevCost" | "variation" | "resources";
+type SortField = "serviceName" | "cost" | "prevCost" | "variation" | "resources";
 type SortDir = "asc" | "desc";
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default function ServicosPage() {
-  const [dashboard, setDashboard] = useState<ServicesDashboardData | null>(null);
+export default function RecursosPage() {
+  const [dashboard, setDashboard] = useState<ResourcesDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingRg, setEditingRg] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [savingAlias, setSavingAlias] = useState(false);
   const [sortField, setSortField] = useState<SortField>("cost");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const fetchDashboard = useCallback(async () => {
     try {
-      const res = await fetch("/api/servicos/dashboard");
+      const res = await fetch("/api/recursos/dashboard");
       const data = await res.json();
       if (data.success) setDashboard(data.data);
     } catch {
@@ -117,37 +109,6 @@ export default function ServicosPage() {
   useEffect(() => {
     fetchDashboard().finally(() => setLoading(false));
   }, [fetchDashboard]);
-
-  // -------------------------------------------------------------------------
-  // Inline alias editing
-  // -------------------------------------------------------------------------
-  const startEdit = (service: ServiceEntry) => {
-    setEditingRg(service.resourceGroup);
-    setEditValue(service.displayName);
-  };
-
-  const cancelEdit = () => {
-    setEditingRg(null);
-    setEditValue("");
-  };
-
-  const saveAlias = async (resourceGroup: string) => {
-    if (!editValue.trim()) return;
-    setSavingAlias(true);
-    try {
-      await fetch("/api/servicos/aliases", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resourceGroup, alias: editValue.trim() }),
-      });
-      setEditingRg(null);
-      await fetchDashboard();
-    } catch {
-      // silent
-    } finally {
-      setSavingAlias(false);
-    }
-  };
 
   // -------------------------------------------------------------------------
   // Sort helpers
@@ -173,7 +134,7 @@ export default function ServicosPage() {
   const sortedServices = dashboard
     ? [...dashboard.services].sort((a, b) => {
         const mul = sortDir === "asc" ? 1 : -1;
-        if (sortField === "displayName") return mul * a.displayName.localeCompare(b.displayName);
+        if (sortField === "serviceName") return mul * a.serviceName.localeCompare(b.serviceName);
         return mul * ((a[sortField] as number) - (b[sortField] as number));
       })
     : [];
@@ -186,7 +147,7 @@ export default function ServicosPage() {
         .filter((s) => s.cost > 0)
         .sort((a, b) => b.cost - a.cost)
         .slice(0, 10)
-        .map((s) => ({ name: s.displayName, custo: s.cost }))
+        .map((s) => ({ name: s.serviceName, custo: s.cost }))
     : [];
 
   const pieData = dashboard
@@ -194,7 +155,7 @@ export default function ServicosPage() {
         const sorted = [...dashboard.services].filter((s) => s.cost > 0).sort((a, b) => b.cost - a.cost);
         const top5 = sorted.slice(0, 5);
         const othersTotal = sorted.slice(5).reduce((sum, s) => sum + s.cost, 0);
-        const result = top5.map((s) => ({ name: s.displayName, value: s.cost }));
+        const result = top5.map((s) => ({ name: s.serviceName, value: s.cost }));
         if (othersTotal > 0) result.push({ name: "Outros", value: othersTotal });
         return result;
       })()
@@ -214,10 +175,10 @@ export default function ServicosPage() {
   if (!dashboard) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-text-primary">Serviços</h1>
+        <h1 className="text-2xl font-bold text-text-primary">Recursos</h1>
         <GlassCard>
           <p className="text-text-secondary text-center py-12">
-            Nenhum dado de serviço encontrado. Sincronize os dados do Azure primeiro.
+            Nenhum dado encontrado. Sincronize os dados do Azure primeiro.
           </p>
         </GlassCard>
       </div>
@@ -229,16 +190,14 @@ export default function ServicosPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <Layers className="h-6 w-6 text-accent-purple" />
-            Serviços
-          </h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Cost allocation por Resource Group — {d.referenceMonth}
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+          <Server className="h-6 w-6 text-accent-blue" />
+          Recursos
+        </h1>
+        <p className="text-sm text-text-secondary mt-1">
+          Cost allocation por Serviço Azure — {d.referenceMonth}
+        </p>
       </div>
 
       {/* KPI Cards */}
@@ -266,11 +225,11 @@ export default function ServicosPage() {
         {/* Active Services */}
         <GlassCard>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-text-secondary">Serviços Ativos</span>
+            <span className="text-sm text-text-secondary">Tipos de Serviço</span>
             <Hash className="h-4 w-4 text-accent-cyan" />
           </div>
           <p className="text-2xl font-bold text-text-primary">{d.serviceCount}</p>
-          <p className="text-xs text-text-secondary mt-1">Resource Groups com custo</p>
+          <p className="text-xs text-text-secondary mt-1">Serviços Azure com custo</p>
         </GlassCard>
 
         {/* Most Expensive */}
@@ -313,7 +272,7 @@ export default function ServicosPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Bar Chart – Cost by Service */}
         <GlassCard>
-          <h3 className="text-sm font-semibold text-text-primary mb-4">Custo por Serviço</h3>
+          <h3 className="text-sm font-semibold text-text-primary mb-4">Custo por Serviço Azure</h3>
           {barData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={barData} layout="vertical" margin={{ left: 20, right: 20 }}>
@@ -327,7 +286,7 @@ export default function ServicosPage() {
                 <YAxis
                   type="category"
                   dataKey="name"
-                  width={140}
+                  width={160}
                   stroke={axisStroke}
                   tick={{ fontSize: 11 }}
                 />
@@ -347,7 +306,7 @@ export default function ServicosPage() {
           )}
         </GlassCard>
 
-        {/* Pie/Donut Chart – Distribution */}
+        {/* Pie/Donut Chart */}
         <GlassCard>
           <h3 className="text-sm font-semibold text-text-primary mb-4">Distribuição por Serviço</h3>
           {pieData.length > 0 ? (
@@ -383,11 +342,11 @@ export default function ServicosPage() {
         </GlassCard>
       </div>
 
-      {/* Stacked Area Chart – Monthly Trend */}
+      {/* Stacked Bar Chart – Monthly Trend */}
       {d.monthlyTrend.length > 0 && (
         <GlassCard>
           <h3 className="text-sm font-semibold text-text-primary mb-4">
-            Evolução Mensal — Top 5 Serviços
+            Evolução Mensal — Top 5 Serviços Azure
           </h3>
           <ResponsiveContainer width="100%" height={350}>
             <BarChart data={d.monthlyTrend} margin={{ left: 10, right: 10 }}>
@@ -419,17 +378,17 @@ export default function ServicosPage() {
 
       {/* Services Table */}
       <GlassCard>
-        <h3 className="text-sm font-semibold text-text-primary mb-4">Detalhamento por Serviço</h3>
+        <h3 className="text-sm font-semibold text-text-primary mb-4">Detalhamento por Serviço Azure</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/10 text-text-secondary">
                 <th
                   className="text-left py-3 px-3 cursor-pointer select-none"
-                  onClick={() => handleSort("displayName")}
+                  onClick={() => handleSort("serviceName")}
                 >
                   Serviço
-                  <SortIcon field="displayName" />
+                  <SortIcon field="serviceName" />
                 </th>
                 <th
                   className="text-right py-3 px-3 cursor-pointer select-none"
@@ -464,58 +423,10 @@ export default function ServicosPage() {
             <tbody>
               {sortedServices.map((s) => (
                 <tr
-                  key={s.resourceGroup}
-                  className="border-b border-white/5 hover:bg-white/5 transition-colors group"
+                  key={s.serviceName}
+                  className="border-b border-white/5 hover:bg-white/5 transition-colors"
                 >
-                  <td className="py-3 px-3">
-                    {editingRg === s.resourceGroup ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          className="glass-input px-2 py-1 text-sm w-48"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveAlias(s.resourceGroup);
-                            if (e.key === "Escape") cancelEdit();
-                          }}
-                          autoFocus
-                          disabled={savingAlias}
-                        />
-                        <button
-                          onClick={() => saveAlias(s.resourceGroup)}
-                          className="text-green-400 hover:text-green-300"
-                          disabled={savingAlias}
-                        >
-                          {savingAlias ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Check className="h-4 w-4" />
-                          )}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="text-red-400 hover:text-red-300"
-                          disabled={savingAlias}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-text-primary font-medium">{s.displayName}</span>
-                        <button
-                          onClick={() => startEdit(s)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-text-secondary hover:text-accent-purple"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                        {s.displayName !== s.resourceGroup && (
-                          <span className="text-xs text-text-secondary">({s.resourceGroup})</span>
-                        )}
-                      </div>
-                    )}
-                  </td>
+                  <td className="py-3 px-3 text-text-primary font-medium">{s.serviceName}</td>
                   <td className="text-right py-3 px-3 text-text-primary font-mono">
                     {formatBRL(s.cost)}
                   </td>
