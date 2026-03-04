@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { azureConfigSchema } from "@/validators/cost";
+import { validateAzureCredentials } from "@/lib/azure/client";
 
 // ---------------------------------------------------------------------------
 // GET – Return current Azure config (with masked clientSecret)
@@ -119,12 +120,21 @@ export async function POST(req: NextRequest) {
           config.clientSecret.substring(config.clientSecret.length - 4)
         : "****";
 
+    // Validate credentials against Azure
+    const validation = await validateAzureCredentials(
+      config.tenantId,
+      config.clientId,
+      config.clientSecret,
+      config.subscriptionId
+    );
+
     return NextResponse.json({
       success: true,
       data: {
         ...config,
         clientSecret: maskedSecret,
       },
+      validation,
     });
   } catch (error) {
     console.error("Azure config POST error:", error);

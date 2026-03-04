@@ -26,11 +26,23 @@ export const budgetSchema = z.object({
 
 export type BudgetFormData = z.infer<typeof budgetSchema>;
 
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const azureConfigSchema = z.object({
-  tenantId: z.string().min(1, "Tenant ID é obrigatório"),
-  clientId: z.string().min(1, "Client ID é obrigatório"),
+  tenantId: z
+    .string()
+    .min(1, "Tenant ID é obrigatório")
+    .regex(uuidRegex, "Tenant ID deve ser um UUID válido"),
+  clientId: z
+    .string()
+    .min(1, "Client ID é obrigatório")
+    .regex(uuidRegex, "Client ID deve ser um UUID válido"),
   clientSecret: z.string().min(1, "Client Secret é obrigatório"),
-  subscriptionId: z.string().min(1, "Subscription ID é obrigatório"),
+  subscriptionId: z
+    .string()
+    .min(1, "Subscription ID é obrigatório")
+    .regex(uuidRegex, "Subscription ID deve ser um UUID válido"),
 });
 
 export type AzureConfigFormData = z.infer<typeof azureConfigSchema>;

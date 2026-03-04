@@ -23,6 +23,11 @@ import { formatDateBR } from "@/lib/formatters";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+interface AzureValidation {
+  valid: boolean;
+  error?: string;
+}
+
 interface AzureConfigData {
   id: string;
   tenantId: string;
@@ -56,6 +61,7 @@ interface SyncLogEntry {
 // ---------------------------------------------------------------------------
 export default function AzurePage() {
   const [config, setConfig] = useState<AzureConfigData | null>(null);
+  const [validation, setValidation] = useState<AzureValidation | null>(null);
   const [syncHistory, setSyncHistory] = useState<SyncLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,6 +87,7 @@ export default function AzurePage() {
       const data = await res.json();
       if (data.success && data.data) {
         setConfig(data.data);
+        if (data.validation) setValidation(data.validation);
         reset({
           tenantId: data.data.tenantId,
           clientId: data.data.clientId,
@@ -132,7 +139,17 @@ export default function AzurePage() {
       }
 
       setConfig(data.data);
-      setSuccess("Configuração salva com sucesso!");
+      if (data.validation) {
+        setValidation(data.validation);
+        if (data.validation.valid) {
+          setSuccess("Configuração salva e credenciais validadas com sucesso!");
+        } else {
+          setSuccess("Configuração salva.");
+          setError(`Validação Azure: ${data.validation.error}`);
+        }
+      } else {
+        setSuccess("Configuração salva com sucesso!");
+      }
     } catch {
       setError("Erro ao salvar configuração");
     } finally {
@@ -440,6 +457,50 @@ export default function AzurePage() {
                 </p>
               </div>
             </div>
+
+            {validation && (
+              <div
+                className={`flex items-center gap-2 rounded-lg p-3 ${
+                  validation.valid
+                    ? "bg-success/10 border border-success/20"
+                    : "bg-danger/10 border border-danger/20"
+                }`}
+              >
+                {validation.valid ? (
+                  <Check className="h-4 w-4 text-success" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-danger" />
+                )}
+                <span
+                  className={`text-xs ${
+                    validation.valid ? "text-success" : "text-danger"
+                  }`}
+                >
+                  {validation.valid
+                    ? "Credenciais validadas"
+                    : validation.error || "Credenciais inválidas"}
+                </span>
+              </div>
+            )}
+
+            {config && (
+              <div className="rounded-lg bg-surface-1/50 p-3">
+                <p className="text-xs text-text-muted">Período da sync</p>
+                <p className="text-sm font-medium text-text-primary">
+                  {new Date(
+                    new Date().getFullYear(),
+                    new Date().getMonth(),
+                    1
+                  ).toLocaleDateString("pt-BR")}{" "}
+                  -{" "}
+                  {new Date(
+                    new Date().getFullYear(),
+                    new Date().getMonth() + 1,
+                    0
+                  ).toLocaleDateString("pt-BR")}
+                </p>
+              </div>
+            )}
 
             {config?.lastSyncAt && (
               <div className="rounded-lg bg-surface-1/50 p-3">
