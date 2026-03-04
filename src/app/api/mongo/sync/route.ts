@@ -114,11 +114,22 @@ export async function POST() {
         config.privateKey
       );
 
-      // Filter to CLOSED/PAID invoices within the period
+      // Log all invoice statuses for debugging
+      console.log(
+        "MongoDB invoices found:",
+        invoices.map((inv) => ({
+          id: inv.id,
+          status: inv.statusName,
+          startDate: inv.startDate,
+          endDate: inv.endDate,
+          amountCents: inv.subtotalCents,
+          lineItems: inv.lineItems?.length ?? "not loaded",
+        }))
+      );
+
+      // Filter invoices within the period (accept any status with charges)
       const cutoffDate = periodStart.toISOString().split("T")[0];
       const relevantInvoices = invoices.filter((inv) => {
-        const status = inv.statusName?.toUpperCase();
-        if (status !== "CLOSED" && status !== "PAID") return false;
         const invStart = inv.startDate?.split("T")[0];
         return invStart && invStart >= cutoffDate;
       });
@@ -210,6 +221,7 @@ export async function POST() {
           status: "SUCCESS",
           recordsFound,
           recordsSynced,
+          invoicesTotal: invoices.length,
           invoicesProcessed: relevantInvoices.length,
           periodStart,
           periodEnd,

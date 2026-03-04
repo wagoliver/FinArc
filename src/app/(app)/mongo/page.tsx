@@ -166,7 +166,7 @@ export default function MongoPage() {
       }
 
       setSyncMsg(
-        `Concluído! ${data.data.recordsSynced} registros sincronizados de ${data.data.invoicesProcessed} faturas.`
+        `Concluído! ${data.data.recordsSynced} registros de ${data.data.invoicesProcessed}/${data.data.invoicesTotal ?? "?"} faturas.`
       );
       fetchDashboard();
       fetchConfig();
