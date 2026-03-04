@@ -9,7 +9,7 @@ export const costEntrySchema = z.object({
   type: z.enum(["FIXED", "VARIABLE", "ONE_TIME"]),
   categoryId: z.string().min(1, "Categoria é obrigatória"),
   notes: z.string().optional(),
-  source: z.enum(["MANUAL", "AZURE_SYNC", "OFX_IMPORT", "CSV_IMPORT"]).optional(),
+  source: z.enum(["MANUAL", "AZURE_SYNC", "MONGO_SYNC", "OFX_IMPORT", "CSV_IMPORT"]).optional(),
 });
 
 export type CostEntryFormData = z.infer<typeof costEntrySchema>;
@@ -46,6 +46,14 @@ export const azureConfigSchema = z.object({
 });
 
 export type AzureConfigFormData = z.infer<typeof azureConfigSchema>;
+
+export const mongoConfigSchema = z.object({
+  orgId: z.string().min(1, "Organization ID é obrigatório"),
+  publicKey: z.string().min(1, "Public Key é obrigatória"),
+  privateKey: z.string().min(1, "Private Key é obrigatória"),
+});
+
+export type MongoConfigFormData = z.infer<typeof mongoConfigSchema>;
 
 export const reconciliationSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),

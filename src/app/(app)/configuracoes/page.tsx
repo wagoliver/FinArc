@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Check,
   Cloud,
+  Database,
   Edit2,
   Loader2,
   Plus,
@@ -24,6 +25,8 @@ import {
 import {
   azureConfigSchema,
   type AzureConfigFormData,
+  mongoConfigSchema,
+  type MongoConfigFormData,
 } from "@/validators/cost";
 import { formatDateBR } from "@/lib/formatters";
 
@@ -65,6 +68,21 @@ interface SyncLogEntry {
   errors: string | null;
   configId: string;
   createdAt: string;
+}
+
+interface MongoConfigData {
+  id: string;
+  orgId: string;
+  publicKey: string;
+  privateKey: string;
+  lastSyncAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface MongoValidation {
+  valid: boolean;
+  error?: string;
 }
 
 const ROLE_CONFIG: Record<string, { label: string; className: string }> = {
@@ -111,6 +129,26 @@ export default function ConfiguracoesPage() {
     formState: { errors: azureFormErrors },
   } = useForm<AzureConfigFormData>({
     resolver: zodResolver(azureConfigSchema),
+  });
+
+  // -------------------------------------------------------------------------
+  // MongoDB config state
+  // -------------------------------------------------------------------------
+  const [mongoConfig, setMongoConfig] = useState<MongoConfigData | null>(null);
+  const [mongoValidation, setMongoValidation] = useState<MongoValidation | null>(null);
+  const [mongoSyncHistory, setMongoSyncHistory] = useState<SyncLogEntry[]>([]);
+  const [mongoSaving, setMongoSaving] = useState(false);
+  const [mongoSyncing, setMongoSyncing] = useState(false);
+  const [mongoError, setMongoError] = useState<string | null>(null);
+  const [mongoSuccess, setMongoSuccess] = useState<string | null>(null);
+
+  const {
+    register: mongoRegister,
+    handleSubmit: mongoHandleSubmit,
+    reset: mongoReset,
+    formState: { errors: mongoFormErrors },
+  } = useForm<MongoConfigFormData>({
+    resolver: zodResolver(mongoConfigSchema),
   });
 
   // -------------------------------------------------------------------------
@@ -165,11 +203,44 @@ export default function ConfiguracoesPage() {
     }
   }, []);
 
+  // -------------------------------------------------------------------------
+  // Fetch MongoDB config + sync history
+  // -------------------------------------------------------------------------
+  const fetchMongoConfig = useCallback(async () => {
+    try {
+      const res = await fetch("/api/mongo/config");
+      const data = await res.json();
+      if (data.success && data.data) {
+        setMongoConfig(data.data);
+        if (data.validation) setMongoValidation(data.validation);
+        mongoReset({
+          orgId: data.data.orgId,
+          publicKey: data.data.publicKey,
+          privateKey: "",
+        });
+      }
+    } catch {
+      // silent
+    }
+  }, [mongoReset]);
+
+  const fetchMongoSyncHistory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/mongo/sync");
+      const data = await res.json();
+      if (data.success) setMongoSyncHistory(data.data);
+    } catch {
+      // silent
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsers();
     fetchAzureConfig();
     fetchSyncHistory();
-  }, [fetchUsers, fetchAzureConfig, fetchSyncHistory]);
+    fetchMongoConfig();
+    fetchMongoSyncHistory();
+  }, [fetchUsers, fetchAzureConfig, fetchSyncHistory, fetchMongoConfig, fetchMongoSyncHistory]);
 
   // -------------------------------------------------------------------------
   // User form handlers
@@ -342,6 +413,73 @@ export default function ConfiguracoesPage() {
       setAzureError("Erro ao sincronizar com Azure");
     } finally {
       setAzureSyncing(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // MongoDB config handlers
+  // -------------------------------------------------------------------------
+  const onMongoSubmit = async (data: MongoConfigFormData) => {
+    setMongoSaving(true);
+    setMongoError(null);
+    setMongoSuccess(null);
+
+    try {
+      const res = await fetch("/api/mongo/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      const result = await res.json();
+
+      if (!result.success) {
+        setMongoError(result.error || "Erro ao salvar configuração");
+        return;
+      }
+
+      setMongoConfig(result.data);
+      if (result.validation) {
+        setMongoValidation(result.validation);
+        if (result.validation.valid) {
+          setMongoSuccess("Configuração salva e credenciais validadas!");
+        } else {
+          setMongoSuccess("Configuração salva.");
+          setMongoError(`Validação MongoDB: ${result.validation.error}`);
+        }
+      } else {
+        setMongoSuccess("Configuração salva com sucesso!");
+      }
+    } catch {
+      setMongoError("Erro ao salvar configuração");
+    } finally {
+      setMongoSaving(false);
+    }
+  };
+
+  const handleMongoSync = async () => {
+    setMongoSyncing(true);
+    setMongoError(null);
+    setMongoSuccess(null);
+
+    try {
+      const res = await fetch("/api/mongo/sync", { method: "POST" });
+      const data = await res.json();
+
+      if (!data.success) {
+        setMongoError(data.error || "Erro ao sincronizar");
+        return;
+      }
+
+      setMongoSuccess(
+        `Sincronização concluída! ${data.data.recordsSynced} registros sincronizados.`
+      );
+      fetchMongoSyncHistory();
+      fetchMongoConfig();
+    } catch {
+      setMongoError("Erro ao sincronizar com MongoDB Atlas");
+    } finally {
+      setMongoSyncing(false);
     }
   };
 
@@ -626,6 +764,248 @@ export default function ConfiguracoesPage() {
                 </thead>
                 <tbody>
                   {syncHistory.map((log) => (
+                    <tr
+                      key={log.id}
+                      className="border-b border-border-glass/50 last:border-0"
+                    >
+                      <td className="px-4 py-2.5">
+                        {syncStatusIndicator(log.status)}
+                      </td>
+                      <td className="px-4 py-2.5 text-text-primary">
+                        {formatDateBR(log.periodStart)} -{" "}
+                        {formatDateBR(log.periodEnd)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-text-primary">
+                        {log.recordsFound}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-text-primary">
+                        {log.recordsSynced}
+                      </td>
+                      <td className="max-w-48 truncate px-4 py-2.5 text-text-muted">
+                        {log.errors || "-"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-text-muted">
+                        {formatDateBR(log.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </GlassCard>
+
+      {/* ================================================================= */}
+      {/* MongoDB Integration                                              */}
+      {/* ================================================================= */}
+      <GlassCard>
+        <div className="mb-5 flex items-center gap-3">
+          <div className="rounded-lg bg-emerald-50 p-2">
+            <Database className="h-5 w-5 text-emerald-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">
+              Integração MongoDB Atlas
+            </h2>
+            <p className="text-xs text-text-muted">
+              Configure credenciais e sincronize custos do MongoDB Atlas
+            </p>
+          </div>
+        </div>
+
+        {/* Mongo alerts */}
+        {mongoError && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <AlertCircle className="h-4 w-4 text-danger" />
+            <span className="text-sm text-danger">{mongoError}</span>
+            <button
+              onClick={() => setMongoError(null)}
+              className="ml-auto text-danger hover:text-danger/80"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {mongoSuccess && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+            <Check className="h-4 w-4 text-success" />
+            <span className="text-sm text-success">{mongoSuccess}</span>
+            <button
+              onClick={() => setMongoSuccess(null)}
+              className="ml-auto text-success hover:text-success/80"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Credential form */}
+        <form onSubmit={mongoHandleSubmit(onMongoSubmit)} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">
+                Organization ID
+              </label>
+              <input
+                type="text"
+                placeholder="6x7y8z..."
+                {...mongoRegister("orgId")}
+                className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted"
+              />
+              {mongoFormErrors.orgId && (
+                <p className="mt-1 text-xs text-danger">
+                  {mongoFormErrors.orgId.message}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">
+                Public Key
+              </label>
+              <input
+                type="text"
+                placeholder="abcdefgh"
+                {...mongoRegister("publicKey")}
+                className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted"
+              />
+              {mongoFormErrors.publicKey && (
+                <p className="mt-1 text-xs text-danger">
+                  {mongoFormErrors.publicKey.message}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">
+                Private Key
+              </label>
+              <input
+                type="password"
+                placeholder={
+                  mongoConfig ? "Digite para alterar" : "Sua private key"
+                }
+                {...mongoRegister("privateKey")}
+                className="glass-input w-full rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted"
+              />
+              {mongoFormErrors.privateKey && (
+                <p className="mt-1 text-xs text-danger">
+                  {mongoFormErrors.privateKey.message}
+                </p>
+              )}
+              {mongoConfig && (
+                <p className="mt-1 text-xs text-text-muted">
+                  Atual: {mongoConfig.privateKey}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Validation status */}
+          {mongoValidation && (
+            <div
+              className={`flex items-center gap-2 rounded-lg p-3 ${
+                mongoValidation.valid
+                  ? "bg-green-50 border border-green-200"
+                  : "bg-red-50 border border-red-200"
+              }`}
+            >
+              {mongoValidation.valid ? (
+                <Check className="h-4 w-4 text-success" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-danger" />
+              )}
+              <span
+                className={`text-xs ${
+                  mongoValidation.valid ? "text-success" : "text-danger"
+                }`}
+              >
+                {mongoValidation.valid
+                  ? "Credenciais validadas"
+                  : mongoValidation.error || "Credenciais inválidas"}
+              </span>
+            </div>
+          )}
+
+          {mongoConfig?.lastSyncAt && (
+            <p className="text-xs text-text-muted">
+              Última sincronização: {formatDateBR(mongoConfig.lastSyncAt)}
+            </p>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={handleMongoSync}
+              disabled={mongoSyncing || !mongoConfig}
+              className="flex items-center gap-2 rounded-lg border border-border-glass px-4 py-2 text-sm text-text-secondary hover:bg-surface-2 disabled:opacity-50"
+            >
+              {mongoSyncing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sincronizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" />
+                  Sincronizar
+                </>
+              )}
+            </button>
+            <button
+              type="submit"
+              disabled={mongoSaving}
+              className="btn-accent flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {mongoSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Salvar Configuração
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+
+        {/* Mongo Sync History */}
+        {mongoSyncHistory.length > 0 && (
+          <div className="mt-6 border-t border-border-glass pt-4">
+            <h3 className="mb-3 text-sm font-medium text-text-secondary">
+              Histórico de Sincronizações
+            </h3>
+            <div className="overflow-auto rounded-lg border border-border-glass">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border-glass bg-slate-50">
+                    <th className="px-4 py-2.5 text-left font-medium text-text-secondary">
+                      Status
+                    </th>
+                    <th className="px-4 py-2.5 text-left font-medium text-text-secondary">
+                      Período
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-medium text-text-secondary">
+                      Encontrados
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-medium text-text-secondary">
+                      Sincronizados
+                    </th>
+                    <th className="px-4 py-2.5 text-left font-medium text-text-secondary">
+                      Erros
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-medium text-text-secondary">
+                      Data
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mongoSyncHistory.map((log) => (
                     <tr
                       key={log.id}
                       className="border-b border-border-glass/50 last:border-0"

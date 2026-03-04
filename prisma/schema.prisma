@@ -22,6 +22,7 @@ enum CostType {
 enum CostSource {
   MANUAL
   AZURE_SYNC
+  MONGO_SYNC
   OFX_IMPORT
   CSV_IMPORT
 }
@@ -108,6 +109,11 @@ model CostEntry {
   azureResourceGroup String? @map("azure_resource_group")
   azureServiceName   String? @map("azure_service_name")
   azureMeterCategory String? @map("azure_meter_category")
+
+  // MongoDB fields
+  mongoClusterName String? @map("mongo_cluster_name")
+  mongoProjectName String? @map("mongo_project_name")
+  mongoSku         String? @map("mongo_sku")
 
   // Bank fields
   bankTransactionId String? @map("bank_transaction_id")
@@ -246,6 +252,37 @@ model AuditLog {
   @@index([entity])
   @@index([userId])
   @@map("audit_logs")
+}
+
+model MongoConfig {
+  id         String   @id @default(cuid())
+  orgId      String   @map("org_id")
+  publicKey  String   @map("public_key")
+  privateKey String   @map("private_key")
+  lastSyncAt DateTime? @map("last_sync_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  syncLogs MongoSyncLog[]
+
+  @@map("mongo_configs")
+}
+
+model MongoSyncLog {
+  id            String     @id @default(cuid())
+  status        SyncStatus
+  periodStart   DateTime   @map("period_start")
+  periodEnd     DateTime   @map("period_end")
+  recordsFound  Int        @default(0) @map("records_found")
+  recordsSynced Int        @default(0) @map("records_synced")
+  errors        String?
+  configId      String     @map("config_id")
+
+  config MongoConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("mongo_sync_logs")
 }
 
 model ServiceAlias {
