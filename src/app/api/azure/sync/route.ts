@@ -135,7 +135,20 @@ export async function POST(req: NextRequest) {
         config.clientSecret
       );
 
-      // 4. Query Azure and persist each page immediately via onPage callback
+      // 4. Load exchange rates for potential USD→BRL conversion
+      const exchangeRates = await prisma.exchangeRate.findMany({
+        where: { month: { gte: periodStart, lte: periodEnd } },
+        orderBy: { month: "desc" },
+      });
+      const rateMap = new Map(
+        exchangeRates.map((r) => [
+          `${r.month.getFullYear()}-${String(r.month.getMonth() + 1).padStart(2, "0")}`,
+          Number(r.rate),
+        ])
+      );
+      const fallbackRate = exchangeRates.length > 0 ? Number(exchangeRates[0].rate) : null;
+
+      // 5. Query Azure and persist each page immediately via onPage callback
       let recordsFound = 0;
       let recordsSynced = 0;
 
@@ -151,6 +164,8 @@ export async function POST(req: NextRequest) {
           const entries: {
             description: string;
             amount: number;
+            originalAmount: number;
+            originalCurrency: string;
             date: Date;
             type: "VARIABLE";
             source: "AZURE_SYNC";
@@ -176,9 +191,22 @@ export async function POST(req: NextRequest) {
             const slug = mapServiceToCategory(row.serviceName);
             const categoryId = categoryMap.get(slug) || fallbackCategoryId;
 
+            const originalAmount = Math.round(row.cost * 100) / 100;
+            const currency = row.currency || "BRL";
+
+            // Convert USD → BRL if needed
+            let amountBRL = originalAmount;
+            if (currency === "USD" && fallbackRate) {
+              const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+              const rate = rateMap.get(monthKey) ?? fallbackRate;
+              amountBRL = Math.round(originalAmount * rate * 100) / 100;
+            }
+
             entries.push({
               description: `Azure - ${row.serviceName}`,
-              amount: Math.round(row.cost * 100) / 100,
+              amount: amountBRL,
+              originalAmount,
+              originalCurrency: currency,
               date,
               type: "VARIABLE",
               source: "AZURE_SYNC",

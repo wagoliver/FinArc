@@ -10,6 +10,7 @@ import {
   Check,
   Cloud,
   Database,
+  DollarSign,
   Edit2,
   Loader2,
   Plus,
@@ -85,6 +86,14 @@ interface MongoValidation {
   error?: string;
 }
 
+interface ExchangeRateEntry {
+  id: string;
+  month: string;
+  rate: number;
+  source: string;
+  updatedAt: string;
+}
+
 const ROLE_CONFIG: Record<string, { label: string; className: string }> = {
   ADMIN: { label: "Administrador", className: "bg-blue-50 text-blue-700" },
   USER: { label: "Usuário", className: "bg-sky-50 text-sky-700" },
@@ -150,6 +159,13 @@ export default function ConfiguracoesPage() {
   } = useForm<MongoConfigFormData>({
     resolver: zodResolver(mongoConfigSchema),
   });
+
+  // -------------------------------------------------------------------------
+  // Exchange rates state
+  // -------------------------------------------------------------------------
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRateEntry[]>([]);
+  const [exchangeSyncing, setExchangeSyncing] = useState(false);
+  const [exchangeMsg, setExchangeMsg] = useState<string | null>(null);
 
   // -------------------------------------------------------------------------
   // Fetch users
@@ -234,13 +250,24 @@ export default function ConfiguracoesPage() {
     }
   }, []);
 
+  const fetchExchangeRates = useCallback(async () => {
+    try {
+      const res = await fetch("/api/exchange-rates");
+      const data = await res.json();
+      if (data.success) setExchangeRates(data.data);
+    } catch {
+      // silent
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsers();
     fetchAzureConfig();
     fetchSyncHistory();
     fetchMongoConfig();
     fetchMongoSyncHistory();
-  }, [fetchUsers, fetchAzureConfig, fetchSyncHistory, fetchMongoConfig, fetchMongoSyncHistory]);
+    fetchExchangeRates();
+  }, [fetchUsers, fetchAzureConfig, fetchSyncHistory, fetchMongoConfig, fetchMongoSyncHistory, fetchExchangeRates]);
 
   // -------------------------------------------------------------------------
   // User form handlers
@@ -1118,6 +1145,111 @@ export default function ConfiguracoesPage() {
           )}
         </GlassCard>
       )}
+
+      {/* Exchange Rates Section */}
+      <GlassCard>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-amber-50 p-2">
+              <DollarSign className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">
+                Câmbio USD/BRL
+              </h2>
+              <p className="text-xs text-text-muted">
+                Cotação PTAX (BCB) — último dia útil de cada mês
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              setExchangeSyncing(true);
+              setExchangeMsg(null);
+              try {
+                const res = await fetch("/api/exchange-rates", { method: "POST" });
+                const data = await res.json();
+                if (data.success) {
+                  setExchangeMsg(`${data.data.synced} meses sincronizados.`);
+                  fetchExchangeRates();
+                } else {
+                  setExchangeMsg(data.error || "Erro ao sincronizar");
+                }
+              } catch {
+                setExchangeMsg("Erro ao sincronizar taxas.");
+              } finally {
+                setExchangeSyncing(false);
+              }
+            }}
+            disabled={exchangeSyncing}
+            className="btn-accent flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-50"
+          >
+            {exchangeSyncing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Sincronizar Taxas
+          </button>
+        </div>
+
+        {exchangeMsg && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {exchangeMsg}
+          </div>
+        )}
+
+        {exchangeRates.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border-glass text-left text-xs text-text-muted">
+                  <th className="pb-2 pr-4">Mês</th>
+                  <th className="pb-2 pr-4 text-right">Taxa USD/BRL</th>
+                  <th className="pb-2 pr-4">Fonte</th>
+                  <th className="pb-2 text-right">Atualizado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exchangeRates.map((rate) => (
+                  <tr
+                    key={rate.id}
+                    className="border-b border-border-glass/50 hover:bg-surface-1"
+                  >
+                    <td className="py-2 pr-4 font-medium text-text-primary">
+                      {new Date(rate.month).toLocaleDateString("pt-BR", {
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </td>
+                    <td className="py-2 pr-4 text-right font-mono text-text-primary">
+                      R$ {rate.rate.toFixed(4)}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                        {rate.source}
+                      </span>
+                    </td>
+                    <td className="py-2 text-right text-xs text-text-muted">
+                      {formatDateBR(rate.updatedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-center text-sm text-text-muted py-6">
+            Nenhuma taxa de câmbio cadastrada. Clique em &quot;Sincronizar Taxas&quot; para importar do BCB.
+          </p>
+        )}
+
+        <div className="mt-4 rounded-lg bg-surface-1 p-3 text-xs text-text-muted">
+          <strong>Agendamento automático:</strong> As taxas são atualizadas automaticamente no dia 1° de cada mês.
+          O sync Azure ocorre no dia 2 às 07h e o sync MongoDB no dia 2 às 08h.
+        </div>
+      </GlassCard>
 
       {/* User Form Dialog */}
       {showForm && (

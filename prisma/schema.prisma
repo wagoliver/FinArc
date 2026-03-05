@@ -115,6 +115,10 @@ model CostEntry {
   mongoProjectName String? @map("mongo_project_name")
   mongoSku         String? @map("mongo_sku")
 
+  // Currency fields
+  originalAmount   Decimal?  @db.Decimal(15, 2) @map("original_amount")
+  originalCurrency String?   @default("BRL") @map("original_currency")
+
   // Bank fields
   bankTransactionId String? @map("bank_transaction_id")
   bankName          String? @map("bank_name")
@@ -283,6 +287,17 @@ model MongoSyncLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("mongo_sync_logs")
+}
+
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  month     DateTime @unique
+  rate      Decimal  @db.Decimal(10, 4)
+  source    String   @default("BCB")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("exchange_rates")
 }
 
 model ServiceAlias {

@@ -33,6 +33,11 @@ export const NAV_ITEMS: NavItem[] = [
         icon: LayoutDashboard,
       },
       {
+        title: "Custo Cloud",
+        href: "/custo-geral",
+        icon: DollarSign,
+      },
+      {
         title: "Azure",
         href: "/azure",
         icon: Cloud,

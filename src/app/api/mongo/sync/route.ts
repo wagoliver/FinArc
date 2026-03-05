@@ -137,6 +137,20 @@ export async function POST() {
       let recordsFound = 0;
       let recordsSynced = 0;
 
+      // 3b. Load exchange rates for USD→BRL conversion
+      const exchangeRates = await prisma.exchangeRate.findMany({
+        where: { month: { gte: periodStart, lte: periodEnd } },
+        orderBy: { month: "desc" },
+      });
+      const rateMap = new Map(
+        exchangeRates.map((r) => [
+          `${r.month.getFullYear()}-${String(r.month.getMonth() + 1).padStart(2, "0")}`,
+          Number(r.rate),
+        ])
+      );
+      // Fallback: most recent rate available
+      const fallbackRate = exchangeRates.length > 0 ? Number(exchangeRates[0].rate) : null;
+
       // 4. For each invoice, fetch line items and persist
       for (const invoice of relevantInvoices) {
         const fullInvoice = await getInvoice(
@@ -184,6 +198,8 @@ export async function POST() {
         const entries: {
           description: string;
           amount: number;
+          originalAmount: number;
+          originalCurrency: string;
           date: Date;
           type: "VARIABLE";
           source: "MONGO_SYNC";
@@ -206,9 +222,18 @@ export async function POST() {
           const slug = mapMongoSkuToCategory(item.sku || "");
           const categoryId = categoryMap.get(slug) || fallbackCategoryId;
 
+          const amountUSD = Math.round(item.totalPriceCents) / 100;
+
+          // Convert USD → BRL using exchange rate for the entry month
+          const monthKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, "0")}`;
+          const rate = rateMap.get(monthKey) ?? fallbackRate ?? 1;
+          const amountBRL = Math.round(amountUSD * rate * 100) / 100;
+
           entries.push({
             description: `MongoDB - ${item.clusterName || item.sku}`,
-            amount: Math.round(item.totalPriceCents) / 100,
+            amount: amountBRL,
+            originalAmount: amountUSD,
+            originalCurrency: "USD",
             date: itemDate,
             type: "VARIABLE",
             source: "MONGO_SYNC",
