@@ -23,32 +23,39 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   {
-    title: "Dashboards",
+    title: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Cloud",
+    href: "/azure",
+    icon: Cloud,
     children: [
-      {
-        title: "Geral",
-        href: "/dashboard",
-        icon: LayoutDashboard,
-      },
-      {
-        title: "Custo Cloud",
-        href: "/custo-geral",
-        icon: DollarSign,
-      },
       {
         title: "Azure",
         href: "/azure",
         icon: Cloud,
       },
       {
-        title: "Serviços",
+        title: "MongoDB",
+        href: "/mongo",
+        icon: Database,
+      },
+    ],
+  },
+  {
+    title: "Análise",
+    href: "/servicos",
+    icon: Layers,
+    children: [
+      {
+        title: "Por Serviço",
         href: "/servicos",
         icon: Layers,
       },
       {
-        title: "Recursos",
+        title: "Por Recurso",
         href: "/recursos",
         icon: Server,
       },
@@ -56,11 +63,6 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Inventário",
         href: "/inventario",
         icon: Package,
-      },
-      {
-        title: "MongoDB",
-        href: "/mongo",
-        icon: Database,
       },
     ],
   },

@@ -79,6 +79,9 @@ export default function ConciliacaoPage() {
   });
   const [formError, setFormError] = useState("");
 
+  // Delete confirmation modal state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
   const fetchReconciliations = useCallback(async () => {
     try {
       const res = await fetch("/api/conciliacao");
@@ -161,8 +164,6 @@ export default function ConciliacaoPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Deseja realmente excluir esta conciliação?")) return;
-
     try {
       const res = await fetch(`/api/conciliacao/${id}`, { method: "DELETE" });
       const json = await res.json();
@@ -171,6 +172,7 @@ export default function ConciliacaoPage() {
           setExpandedId(null);
           setDetailData(null);
         }
+        setDeleteTarget(null);
         fetchReconciliations();
       }
     } catch (error) {
@@ -371,6 +373,46 @@ export default function ConciliacaoPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <GlassCard variant="strong" className="w-full max-w-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-danger/15">
+                <Trash2 className="h-5 w-5 text-danger" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-text-primary">
+                  Excluir conciliação
+                </h3>
+                <p className="text-sm text-text-muted">
+                  Esta ação não pode ser desfeita.
+                </p>
+              </div>
+            </div>
+            <p className="mb-5 text-sm text-text-secondary">
+              Tem certeza que deseja excluir{" "}
+              <strong>{deleteTarget.name}</strong>? Todos os vínculos de
+              conciliação serão removidos.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border border-border-glass px-4 py-2 text-sm text-text-secondary hover:bg-surface-2"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDelete(deleteTarget.id)}
+                className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-danger/90"
+              >
+                Excluir
+              </button>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
       {/* Reconciliation List */}
       {reconciliations.length === 0 ? (
         <GlassCard className="py-12 text-center">
@@ -431,9 +473,10 @@ export default function ConciliacaoPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete(rec.id);
+                          setDeleteTarget({ id: rec.id, name: rec.name });
                         }}
                         className="rounded-lg p-1.5 text-text-muted hover:bg-danger/10 hover:text-danger"
+                        title="Excluir conciliação"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -461,6 +504,7 @@ export default function ConciliacaoPage() {
                             <button
                               onClick={() => fetchSuggestions(rec.id)}
                               className="flex items-center gap-1.5 rounded-lg border border-border-glass px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2"
+                              title="Obter sugestões automáticas de conciliação baseadas em valor e data"
                             >
                               <Lightbulb className="h-4 w-4 text-warning" />
                               Sugestões

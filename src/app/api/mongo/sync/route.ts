@@ -9,6 +9,7 @@ import {
   MongoApiError,
 } from "@/lib/mongo/client";
 import { mapMongoSkuToCategory } from "@/lib/mongo/category-mapper";
+import { fetchMonthlyRates } from "@/lib/exchange/bcb";
 
 // ---------------------------------------------------------------------------
 // POST – Trigger MongoDB Atlas sync
@@ -137,7 +138,22 @@ export async function POST() {
       let recordsFound = 0;
       let recordsSynced = 0;
 
-      // 3b. Load exchange rates for USD→BRL conversion
+      // 3b. Auto-sync exchange rates from BCB, then load for USD→BRL conversion
+      try {
+        console.log("Sincronizando taxas de câmbio do BCB...");
+        const bcbRates = await fetchMonthlyRates(periodStart, periodEnd);
+        for (const { month, rate } of bcbRates) {
+          await prisma.exchangeRate.upsert({
+            where: { month },
+            update: { rate, source: "BCB" },
+            create: { month, rate, source: "BCB" },
+          });
+        }
+        console.log(`${bcbRates.length} taxas de câmbio sincronizadas do BCB`);
+      } catch (bcbError) {
+        console.warn("Falha ao sincronizar taxas do BCB, usando taxas existentes:", bcbError);
+      }
+
       const exchangeRates = await prisma.exchangeRate.findMany({
         where: { month: { gte: periodStart, lte: periodEnd } },
         orderBy: { month: "desc" },
@@ -150,6 +166,10 @@ export async function POST() {
       );
       // Fallback: most recent rate available
       const fallbackRate = exchangeRates.length > 0 ? Number(exchangeRates[0].rate) : null;
+
+      if (!fallbackRate) {
+        console.warn("ATENÇÃO: Nenhuma taxa de câmbio encontrada. Valores serão salvos em USD (rate=1).");
+      }
 
       // 4. For each invoice, fetch line items and persist
       for (const invoice of relevantInvoices) {

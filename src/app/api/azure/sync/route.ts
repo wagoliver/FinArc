@@ -8,6 +8,7 @@ import {
   AzureCostQueryError,
 } from "@/lib/azure/client";
 import { mapServiceToCategory } from "@/lib/azure/category-mapper";
+import { fetchMonthlyRates } from "@/lib/exchange/bcb";
 
 // ---------------------------------------------------------------------------
 // Helper: parse "2023-01" → { start, end } date range
@@ -135,7 +136,21 @@ export async function POST(req: NextRequest) {
         config.clientSecret
       );
 
-      // 4. Load exchange rates for potential USD→BRL conversion
+      // 4. Auto-sync exchange rates from BCB, then load for USD→BRL conversion
+      try {
+        const bcbRates = await fetchMonthlyRates(periodStart, periodEnd);
+        for (const { month, rate } of bcbRates) {
+          await prisma.exchangeRate.upsert({
+            where: { month },
+            update: { rate, source: "BCB" },
+            create: { month, rate, source: "BCB" },
+          });
+        }
+        console.log(`${bcbRates.length} taxas de câmbio sincronizadas do BCB`);
+      } catch (bcbError) {
+        console.warn("Falha ao sincronizar taxas do BCB, usando taxas existentes:", bcbError);
+      }
+
       const exchangeRates = await prisma.exchangeRate.findMany({
         where: { month: { gte: periodStart, lte: periodEnd } },
         orderBy: { month: "desc" },

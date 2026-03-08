@@ -15,6 +15,9 @@ import {
   Cloud,
   Target,
   Plus,
+  AlertTriangle,
+  Upload,
+  GitCompareArrows,
 } from "lucide-react";
 import { formatBRL } from "@/lib/formatters";
 import type { DashboardData } from "@/types";
@@ -29,8 +32,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
 } from "recharts";
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -40,17 +41,34 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   Outros: <MoreHorizontal className="h-4 w-4" />,
 };
 
+const CHART_STYLES = {
+  tooltip: {
+    background: "var(--color-surface-1)",
+    border: "1px solid var(--color-border-glass)",
+    borderRadius: "0.75rem",
+    color: "var(--color-text-primary)",
+    fontSize: "0.8rem",
+  },
+  gridStroke: "var(--color-border-glass)",
+  axisStroke: "var(--color-text-muted)",
+};
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/dashboard")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Falha ao carregar dados");
+        return res.json();
+      })
       .then((res) => {
         if (res.success) setData(res.data);
+        else throw new Error(res.error || "Erro desconhecido");
       })
-      .catch(console.error)
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
@@ -58,6 +76,21 @@ export default function DashboardPage() {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-3">
+        <AlertTriangle className="h-10 w-10 text-warning" />
+        <p className="text-sm text-text-secondary">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-lg border border-border-glass px-4 py-2 text-sm text-text-secondary hover:bg-surface-2"
+        >
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -73,6 +106,7 @@ export default function DashboardPage() {
   };
 
   const variationPositive = d.monthlyVariation > 0;
+  const totalCategories = d.costsByCategory.reduce((s, c) => s + c.total, 0);
 
   return (
     <div className="space-y-6">
@@ -139,7 +173,7 @@ export default function DashboardPage() {
           </div>
         </GlassCard>
 
-        {/* Trend Chart */}
+        {/* Trend Chart — single unified chart (removed duplicate BarChart) */}
         <GlassCard className="bento-card bento-card-wide flex flex-col">
           <span className="mb-3 text-sm font-medium text-text-secondary">
             Tendência de Custos
@@ -149,42 +183,26 @@ export default function DashboardPage() {
               <AreaChart data={d.monthlyCosts}>
                 <defs>
                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="0%"
-                      stopColor="#2563EB"
-                      stopOpacity={0.2}
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor="#2563EB"
-                      stopOpacity={0}
-                    />
+                    <stop offset="0%" stopColor="#2563EB" stopOpacity={0.2} />
+                    <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="#E2E8F0"
+                  stroke={CHART_STYLES.gridStroke}
                 />
                 <XAxis
                   dataKey="month"
-                  stroke="#94A3B8"
+                  stroke={CHART_STYLES.axisStroke}
                   fontSize={11}
                 />
                 <YAxis
-                  stroke="#94A3B8"
+                  stroke={CHART_STYLES.axisStroke}
                   fontSize={11}
-                  tickFormatter={(v) =>
-                    `R$${(v / 1000).toFixed(0)}k`
-                  }
+                  tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
                 />
                 <Tooltip
-                  contentStyle={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "0.75rem",
-                    color: "#1E293B",
-                    fontSize: "0.8rem",
-                  }}
+                  contentStyle={CHART_STYLES.tooltip}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   formatter={(value: any) => [formatBRL(Number(value)), "Total"]}
                 />
@@ -200,88 +218,81 @@ export default function DashboardPage() {
           </div>
         </GlassCard>
 
-        {/* Category Donut */}
-        <GlassCard className="bento-card flex flex-col">
+        {/* Categories — unified donut + legend (merged two cards into one) */}
+        <GlassCard className="bento-card bento-card-wide flex flex-col">
           <span className="mb-3 text-sm font-medium text-text-secondary">
-            Por Categoria
+            Custos por Categoria
           </span>
-          <div className="flex-1">
-            {d.costsByCategory.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={d.costsByCategory}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={35}
-                    outerRadius={55}
-                    dataKey="total"
-                    nameKey="category"
-                    strokeWidth={0}
-                  >
-                    {d.costsByCategory.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: "#FFFFFF",
-                      border: "1px solid #E2E8F0",
-                      borderRadius: "0.75rem",
-                      color: "#1E293B",
-                      fontSize: "0.8rem",
-                    }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: any) => [formatBRL(Number(value)), ""]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-text-muted">
-                Sem dados
-              </div>
-            )}
-          </div>
-        </GlassCard>
-
-        {/* Category List */}
-        <GlassCard className="bento-card flex flex-col">
-          <span className="mb-3 text-sm font-medium text-text-secondary">
-            Categorias
-          </span>
-          <div className="flex-1 space-y-3">
-            {d.costsByCategory.length > 0 ? (
-              d.costsByCategory.map((cat) => (
-                <div
-                  key={cat.category}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="flex h-7 w-7 items-center justify-center rounded-lg"
-                      style={{ backgroundColor: `${cat.color}20` }}
+          {d.costsByCategory.length > 0 ? (
+            <div className="flex flex-1 items-center gap-6">
+              <div className="h-full w-1/2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={d.costsByCategory}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={35}
+                      outerRadius={55}
+                      dataKey="total"
+                      nameKey="category"
+                      strokeWidth={0}
                     >
-                      <span style={{ color: cat.color }}>
-                        {CATEGORY_ICONS[cat.category] || (
-                          <MoreHorizontal className="h-4 w-4" />
-                        )}
-                      </span>
-                    </div>
-                    <span className="text-sm text-text-primary">
-                      {cat.category}
-                    </span>
-                  </div>
-                  <span className="text-sm font-medium text-text-primary">
-                    {formatBRL(cat.total)}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-text-muted">
-                Sem dados
+                      {d.costsByCategory.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={CHART_STYLES.tooltip}
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={(value: any) => [formatBRL(Number(value)), ""]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            )}
-          </div>
+              <div className="flex-1 space-y-2.5">
+                {d.costsByCategory.map((cat) => {
+                  const pct = totalCategories > 0
+                    ? ((cat.total / totalCategories) * 100).toFixed(0)
+                    : "0";
+                  return (
+                    <div
+                      key={cat.category}
+                      className="flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="flex h-7 w-7 items-center justify-center rounded-lg"
+                          style={{ backgroundColor: `${cat.color}20` }}
+                        >
+                          <span style={{ color: cat.color }}>
+                            {CATEGORY_ICONS[cat.category] || (
+                              <MoreHorizontal className="h-4 w-4" />
+                            )}
+                          </span>
+                        </div>
+                        <span className="text-sm text-text-primary">
+                          {cat.category}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-medium text-text-primary">
+                          {formatBRL(cat.total)}
+                        </span>
+                        <span className="ml-2 text-xs text-text-muted">
+                          {pct}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-xs text-text-muted">
+              Sem dados
+            </div>
+          )}
         </GlassCard>
 
         {/* Recent Transactions */}
@@ -346,73 +357,6 @@ export default function DashboardPage() {
           </div>
         </GlassCard>
 
-        {/* Monthly Bars */}
-        <GlassCard className="bento-card bento-card-wide flex flex-col">
-          <span className="mb-3 text-sm font-medium text-text-secondary">
-            Custos Mensais
-          </span>
-          <div className="flex-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={d.monthlyCosts}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#E2E8F0"
-                />
-                <XAxis
-                  dataKey="month"
-                  stroke="#94A3B8"
-                  fontSize={11}
-                />
-                <YAxis
-                  stroke="#94A3B8"
-                  fontSize={11}
-                  tickFormatter={(v) =>
-                    `R$${(v / 1000).toFixed(0)}k`
-                  }
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "#FFFFFF",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "0.75rem",
-                    color: "#1E293B",
-                    fontSize: "0.8rem",
-                  }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: any) => [formatBRL(Number(value)), "Total"]}
-                />
-                <Bar
-                  dataKey="total"
-                  fill="#2563EB"
-                  radius={[6, 6, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </GlassCard>
-
-        {/* Azure Status */}
-        <GlassCard className="bento-card flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-text-secondary">Azure Status</span>
-            <Cloud className="h-4 w-4 text-accent-blue" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="h-2.5 w-2.5 rounded-full bg-text-muted" />
-              <span className="text-sm text-text-secondary">
-                Não configurado
-              </span>
-            </div>
-            <a
-              href="/azure"
-              className="mt-2 flex items-center gap-1 text-xs text-accent-blue hover:underline"
-            >
-              Configurar <ArrowUpRight className="h-3 w-3" />
-            </a>
-          </div>
-        </GlassCard>
-
         {/* Budget Progress */}
         <GlassCard className="bento-card flex flex-col">
           <div className="mb-3 flex items-center justify-between">
@@ -438,9 +382,9 @@ export default function DashboardPage() {
                         width: `${Math.min(budget.percentage, 100)}%`,
                         backgroundColor:
                           budget.percentage > 90
-                            ? "#DC2626"
+                            ? "var(--color-danger)"
                             : budget.percentage > 70
-                            ? "#D97706"
+                            ? "var(--color-warning)"
                             : "#2563EB",
                       }}
                     />
@@ -455,17 +399,42 @@ export default function DashboardPage() {
           </div>
         </GlassCard>
 
-        {/* Quick Actions */}
+        {/* Azure Status — improved with context */}
+        <GlassCard className="bento-card flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-text-secondary">Azure Cloud</span>
+            <Cloud className="h-4 w-4 text-accent-blue" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="h-2.5 w-2.5 rounded-full bg-text-muted" />
+              <span className="text-sm text-text-secondary">
+                Não conectado
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs text-text-muted">
+              Conecte sua conta Azure para importar custos de cloud automaticamente.
+            </p>
+            <a
+              href="/azure"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent-blue hover:underline"
+            >
+              Conectar Azure <ArrowUpRight className="h-3 w-3" />
+            </a>
+          </div>
+        </GlassCard>
+
+        {/* Quick Actions — deduplicated, grouped by context */}
         <GlassCard className="bento-card flex flex-col">
           <span className="mb-3 text-sm font-medium text-text-secondary">
             Ações Rápidas
           </span>
           <div className="flex flex-1 flex-col gap-2">
             {[
-              { label: "Novo Custo", href: "/custos?new=true", icon: Plus },
-              { label: "Importar OFX/CSV", href: "/importacao", icon: ArrowUpRight },
-              { label: "Sync Azure", href: "/azure", icon: Cloud },
-              { label: "Conciliar", href: "/conciliacao", icon: Target },
+              { label: "Importar OFX/CSV", href: "/importacao", icon: Upload },
+              { label: "Conciliar Lançamentos", href: "/conciliacao", icon: GitCompareArrows },
+              { label: "Ver Relatórios", href: "/relatorios", icon: ArrowUpRight },
+              { label: "Conectar Azure", href: "/azure", icon: Cloud },
             ].map((action) => (
               <a
                 key={action.label}

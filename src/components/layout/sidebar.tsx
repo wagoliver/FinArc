@@ -161,10 +161,10 @@ export function Sidebar() {
       </nav>
 
       {/* Toggle button */}
-      <div className="px-3 pb-1">
+      <div className="px-3 pb-2">
         <button
           onClick={toggle}
-          title={collapsed ? "Expandir" : "Colapsar"}
+          title={collapsed ? "Expandir menu" : "Recolher menu"}
           className={cn(
             "sidebar-link w-full",
             collapsed && "sidebar-link-collapsed"
@@ -175,17 +175,17 @@ export function Sidebar() {
           ) : (
             <>
               <ChevronLeft className="h-4.5 w-4.5 shrink-0" />
-              <span>Colapsar</span>
+              <span>Recolher</span>
             </>
           )}
         </button>
       </div>
 
-      {/* Logout */}
-      <div className="border-t border-slate-700 p-3">
+      {/* Logout — separated with extra spacing */}
+      <div className="border-t border-slate-700 p-3 pt-4">
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          title={collapsed ? "Sair" : undefined}
+          title={collapsed ? "Sair da conta" : undefined}
           className={cn(
             "sidebar-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10",
             collapsed && "sidebar-link-collapsed"

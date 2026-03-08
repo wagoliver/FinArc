@@ -17,6 +17,9 @@ import {
   Loader2,
   ChevronUp,
   ChevronDown,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { formatBRL } from "@/lib/formatters";
 import {
@@ -103,6 +106,9 @@ export default function ServicosPage() {
   const [savingAlias, setSavingAlias] = useState(false);
   const [sortField, setSortField] = useState<SortField>("cost");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -170,13 +176,21 @@ export default function ServicosPage() {
     );
   };
 
-  const sortedServices = dashboard
-    ? [...dashboard.services].sort((a, b) => {
-        const mul = sortDir === "asc" ? 1 : -1;
-        if (sortField === "displayName") return mul * a.displayName.localeCompare(b.displayName);
-        return mul * ((a[sortField] as number) - (b[sortField] as number));
-      })
+  const filteredServices = dashboard
+    ? dashboard.services.filter((s) =>
+        s.displayName.toLowerCase().includes(search.toLowerCase()) ||
+        s.resourceGroup.toLowerCase().includes(search.toLowerCase())
+      )
     : [];
+
+  const sortedServices = [...filteredServices].sort((a, b) => {
+    const mul = sortDir === "asc" ? 1 : -1;
+    if (sortField === "displayName") return mul * a.displayName.localeCompare(b.displayName);
+    return mul * ((a[sortField] as number) - (b[sortField] as number));
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sortedServices.length / pageSize));
+  const pagedServices = sortedServices.slice((page - 1) * pageSize, page * pageSize);
 
   // -------------------------------------------------------------------------
   // Chart data
@@ -419,7 +433,19 @@ export default function ServicosPage() {
 
       {/* Services Table */}
       <GlassCard>
-        <h3 className="text-sm font-semibold text-text-primary mb-4">Detalhamento por Serviço</h3>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-text-primary">Detalhamento por Serviço</h3>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Buscar serviço..."
+              className="glass-input w-64 py-1.5 pl-9 pr-3 text-sm"
+            />
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -462,7 +488,7 @@ export default function ServicosPage() {
               </tr>
             </thead>
             <tbody>
-              {sortedServices.map((s) => (
+              {pagedServices.map((s) => (
                 <tr
                   key={s.resourceGroup}
                   className="border-b border-white/5 hover:bg-white/5 transition-colors group"
@@ -544,16 +570,39 @@ export default function ServicosPage() {
                   <td className="text-right py-3 px-3 text-text-secondary">{s.resources}</td>
                 </tr>
               ))}
-              {sortedServices.length === 0 && (
+              {pagedServices.length === 0 && (
                 <tr>
                   <td colSpan={5} className="text-center py-8 text-text-secondary">
-                    Nenhum serviço encontrado
+                    {search ? "Nenhum serviço encontrado para a busca" : "Nenhum serviço encontrado"}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-border-glass px-3 pt-3 mt-3">
+            <p className="text-xs text-text-muted">
+              {sortedServices.length} resultado{sortedServices.length !== 1 ? "s" : ""} — página {page} de {totalPages}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                className="rounded-lg p-1.5 text-text-muted hover:bg-surface-2/50 hover:text-text-primary disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded-lg p-1.5 text-text-muted hover:bg-surface-2/50 hover:text-text-primary disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </GlassCard>
     </div>
   );
